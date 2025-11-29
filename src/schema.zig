@@ -1,0 +1,190 @@
+// Schema definition types for the model generator
+const std = @import("std");
+
+pub const FieldType = enum {
+    uuid,
+    text,
+    text_optional,
+    bool,
+    i16,
+    i32,
+    i64,
+    i64_optional,
+    timestamp,
+    timestamp_optional,
+    json,
+    json_optional,
+
+    pub fn toZigType(self: FieldType) []const u8 {
+        return switch (self) {
+            .uuid => "[]const u8",
+            .text => "[]const u8",
+            .text_optional => "?[]const u8",
+            .bool => "bool",
+            .i16 => "i16",
+            .i32 => "i32",
+            .i64 => "i64",
+            .i64_optional => "?i64",
+            .timestamp => "i64",
+            .timestamp_optional => "?i64",
+            .json => "[]const u8",
+            .json_optional => "?[]const u8",
+        };
+    }
+
+    pub fn toPgType(self: FieldType) []const u8 {
+        return switch (self) {
+            .uuid => "UUID",
+            .text => "TEXT",
+            .text_optional => "TEXT",
+            .bool => "BOOLEAN",
+            .i16 => "SMALLINT",
+            .i32 => "INT",
+            .i64 => "BIGINT",
+            .i64_optional => "BIGINT",
+            .timestamp => "TIMESTAMP",
+            .timestamp_optional => "TIMESTAMP",
+            .json => "JSON",
+            .json_optional => "JSON",
+        };
+    }
+
+    pub fn isOptional(self: FieldType) bool {
+        return switch (self) {
+            .text_optional, .i64_optional, .timestamp_optional, .json_optional => true,
+            else => false,
+        };
+    }
+};
+
+pub const InputMode = enum {
+    required, // Must be in CreateInput
+    optional, // Optional in CreateInput
+    excluded, // Not in CreateInput (auto-generated)
+};
+
+pub const Field = struct {
+    name: []const u8,
+    type: FieldType,
+
+    // Constraints
+    primary_key: bool = false,
+    unique: bool = false,
+    not_null: bool = true,
+
+    // Generation hints
+    create_input: InputMode = .excluded,
+    update_input: bool = false,
+
+    // JSON response hints
+    redacted: bool = false, // If true, field is excluded from toJsonResponseSafe()
+
+    // SQL defaults
+    default_value: ?[]const u8 = null,
+    auto_generated: bool = false,
+};
+
+pub const Index = struct {
+    name: []const u8,
+    columns: []const []const u8,
+    unique: bool = false,
+};
+
+pub const RelationshipType = enum {
+    many_to_one, // This table has foreign key to another table (e.g., Post -> User)
+    one_to_many, // Another table has foreign key to this table (e.g., User -> Posts)
+    one_to_one, // One-to-one relationship
+    many_to_many, // Many-to-many through junction table
+};
+
+pub const OnDeleteAction = enum {
+    cascade,
+    set_null,
+    set_default,
+    restrict,
+    no_action,
+
+    pub fn toSQL(self: OnDeleteAction) []const u8 {
+        return switch (self) {
+            .cascade => "CASCADE",
+            .set_null => "SET NULL",
+            .set_default => "SET DEFAULT",
+            .restrict => "RESTRICT",
+            .no_action => "NO ACTION",
+        };
+    }
+};
+
+pub const OnUpdateAction = enum {
+    cascade,
+    set_null,
+    set_default,
+    restrict,
+    no_action,
+
+    pub fn toSQL(self: OnUpdateAction) []const u8 {
+        return switch (self) {
+            .cascade => "CASCADE",
+            .set_null => "SET NULL",
+            .set_default => "SET DEFAULT",
+            .restrict => "RESTRICT",
+            .no_action => "NO ACTION",
+        };
+    }
+};
+
+pub const Relationship = struct {
+    name: []const u8,
+    column: []const u8,
+    references_table: []const u8,
+    references_column: []const u8,
+    relationship_type: RelationshipType = .many_to_one,
+    on_delete: OnDeleteAction = .no_action,
+    on_update: OnUpdateAction = .no_action,
+};
+
+pub const Schema = struct {
+    table_name: []const u8,
+    struct_name: []const u8,
+    fields: []const Field,
+    indexes: []const Index,
+    relationships: []const Relationship,
+
+    pub fn getCreateInputFields(self: Schema) []const Field {
+        var count: usize = 0;
+        for (self.fields) |field| {
+            if (field.create_input != .excluded) {
+                count += 1;
+            }
+        }
+
+        var result = std.heap.page_allocator.alloc(Field, count) catch unreachable;
+        var i: usize = 0;
+        for (self.fields) |field| {
+            if (field.create_input != .excluded) {
+                result[i] = field;
+                i += 1;
+            }
+        }
+        return result;
+    }
+
+    pub fn getUpdateInputFields(self: Schema) []const Field {
+        var count: usize = 0;
+        for (self.fields) |field| {
+            if (field.update_input) {
+                count += 1;
+            }
+        }
+
+        var result = std.heap.page_allocator.alloc(Field, count) catch unreachable;
+        var i: usize = 0;
+        for (self.fields) |field| {
+            if (field.update_input) {
+                result[i] = field;
+                i += 1;
+            }
+        }
+        return result;
+    }
+};

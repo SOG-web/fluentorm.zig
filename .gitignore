@@ -1,0 +1,17 @@
+.zig-cache/
+zig-out/
+*.der
+
+!.env.example
+.DS_Store
+src/db/.DS_Store
+*.DS_Store
+
+*zig-build/
+*.zig-cache/
+.env
+
+# Environment files
+.env
+.env.local
+.env.production
