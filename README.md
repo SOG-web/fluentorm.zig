@@ -2,6 +2,9 @@
 
 A production-ready, standalone tool that generates type-safe Zig database models from JSON schema definitions. Built on top of `pg.zig`.
 
+> [!WARNING] > **Active Development**: This project is currently under active development.
+> The **Query Builder** and **Transaction** features are currently **untested**. Please use them with caution and report any issues you encounter.
+
 ## 🚀 Features
 
 - **Zero Boilerplate**: No manual model registration or build configuration required.
@@ -46,6 +49,18 @@ Detailed documentation for generated components:
 - **[Base Model API](docs/BASE_MODEL.md)**: CRUD, DDL, and utility methods.
 - **[Query Builder](docs/QUERY.md)**: Fluent API for complex queries.
 - **[Transactions](docs/TRANSACTION.md)**: Transaction support and usage.
+- **[Relationships](docs/RELATIONSHIPS.md)**: Defining schema relationships.
+
+## 📂 Examples
+
+Check out the `examples/` directory for complete schema definitions:
+
+- **[Auth User](examples/schemas/auth_user.json)**: A comprehensive user model with auth fields.
+- **[Profile](examples/schemas/profile.json)**: One-to-one relationship with User.
+- **[Post](examples/schemas/post.json)**: Many-to-one relationship (User -> Posts).
+- **[Comment](examples/schemas/comment.json)**: Nested relationships (User -> Comment -> Post).
+- **[Organization](examples/schemas/org.json)**: Organization model with one-to-many relationships.
+- **[Organization User](examples/schemas/org_user.json)**: Junction model with foreign keys.
 
 ## 📖 Schema Reference
 
@@ -186,6 +201,13 @@ pub fn build(b: *std.Build) void {
   ]
 }
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! This project is under active development, and we appreciate any help in improving it.
+
+- **Bug Reports**: Please open an issue if you encounter any problems, especially with the experimental Query Builder and Transaction features.
+- **Pull Requests**: Feel free to submit PRs for bug fixes, new features, or documentation improvements.
 
 ## 📄 License
 

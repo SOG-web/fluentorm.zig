@@ -1,0 +1,146 @@
+{
+  "table_name": "auth_users",
+  "struct_name": "AuthUser",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "primary_key": true,
+      "default": "gen_random_uuid()",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "email",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "phone_number",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "user_type",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required"
+    },
+    {
+      "name": "password",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "redacted": true
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp",
+      "nullable": false,
+      "default": "CURRENT_TIMESTAMP",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp",
+      "nullable": false,
+      "default": "CURRENT_TIMESTAMP",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "deleted_at",
+      "type": "timestamp",
+      "nullable": true,
+      "input_mode": "optional"
+    },
+    {
+      "name": "is_active",
+      "type": "boolean",
+      "nullable": false,
+      "default": "TRUE",
+      "input_mode": "optional"
+    },
+    {
+      "name": "is_verified",
+      "type": "boolean",
+      "nullable": false,
+      "default": "FALSE",
+      "input_mode": "optional"
+    },
+    {
+      "name": "is_email_verified",
+      "type": "boolean",
+      "nullable": false,
+      "default": "FALSE",
+      "input_mode": "optional"
+    },
+    {
+      "name": "is_phone_verified",
+      "type": "boolean",
+      "nullable": false,
+      "default": "FALSE",
+      "input_mode": "optional"
+    },
+    {
+      "name": "last_login",
+      "type": "timestamp",
+      "nullable": true,
+      "input_mode": "optional"
+    },
+    {
+      "name": "profile_image_url",
+      "type": "text",
+      "nullable": true,
+      "input_mode": "optional"
+    },
+    {
+      "name": "otp",
+      "type": "text",
+      "nullable": true,
+      "input_mode": "optional",
+      "redacted": true
+    },
+    {
+      "name": "email_otp",
+      "type": "text",
+      "nullable": true,
+      "input_mode": "optional",
+      "redacted": true
+    },
+    {
+      "name": "phone_number_otp",
+      "type": "text",
+      "nullable": true,
+      "input_mode": "optional",
+      "redacted": true
+    },
+    {
+      "name": "phone_otp_created_at",
+      "type": "timestamp",
+      "nullable": true,
+      "input_mode": "optional"
+    },
+    {
+      "name": "email_otp_created_at",
+      "type": "timestamp",
+      "nullable": true,
+      "input_mode": "optional"
+    }
+  ],
+  "indexes": [
+    {
+      "name": "idx_auth_users_email",
+      "columns": ["email"],
+      "unique": true
+    },
+    {
+      "name": "idx_auth_users_phone_number",
+      "columns": ["phone_number"],
+      "unique": true
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "table_name": "organizations",
+  "struct_name": "Organization",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "primary_key": true,
+      "default": "gen_random_uuid()",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "email",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "phone",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp",
+      "nullable": false,
+      "input_mode": "auto_generated",
+      "default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp",
+      "nullable": false,
+      "input_mode": "auto_generated",
+      "default": "CURRENT_TIMESTAMP"
+    }
+  ],
+  "indexes": [
+    {
+      "name": "idx_organizations_email",
+      "columns": ["email"],
+      "unique": true
+    }
+  ],
+  "relationships": [
+    {
+      "name": "org_users",
+      "column": "id",
+      "type": "one_to_many",
+      "references": {
+        "table": "organization_users",
+        "column": "organization_id"
+      }
+    }
+  ]
+}

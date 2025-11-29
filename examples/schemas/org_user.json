@@ -1,0 +1,71 @@
+{
+  "table_name": "organization_users",
+  "struct_name": "OrganizationUser",
+  "fields": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "primary_key": true,
+      "default": "gen_random_uuid()",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "organization_id",
+      "type": "uuid",
+      "nullable": false,
+      "input_mode": "required"
+    },
+    {
+      "name": "user_id",
+      "type": "uuid",
+      "nullable": false,
+      "input_mode": "required",
+      "unique": true
+    },
+    {
+      "name": "role",
+      "type": "text",
+      "nullable": false,
+      "input_mode": "required"
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp",
+      "nullable": false,
+      "default": "now()",
+      "input_mode": "auto_generated"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp",
+      "nullable": false,
+      "default": "now()",
+      "input_mode": "auto_generated"
+    }
+  ],
+  "relationships": [
+    {
+      "name": "fk_org_users_org_id",
+      "column": "organization_id",
+      "type": "many_to_one",
+      "references": {
+        "table": "organizations",
+        "column": "id"
+      },
+      "on_delete": "CASCADE",
+      "on_update": "CASCADE"
+    },
+    {
+      "name": "fk_org_users_user_id",
+      "column": "user_id",
+      "type": "many_to_one",
+      "references": {
+        "table": "auth_users",
+        "column": "id"
+      },
+      "on_delete": "CASCADE",
+      "on_update": "CASCADE"
+    }
+  ]
+}
