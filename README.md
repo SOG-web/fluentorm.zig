@@ -39,7 +39,15 @@ bash install.sh
 },
 ```
 
-## � Schema Reference
+## 📚 Documentation
+
+Detailed documentation for generated components:
+
+- **[Base Model API](docs/BASE_MODEL.md)**: CRUD, DDL, and utility methods.
+- **[Query Builder](docs/QUERY.md)**: Fluent API for complex queries.
+- **[Transactions](docs/TRANSACTION.md)**: Transaction support and usage.
+
+## 📖 Schema Reference
 
 Create `.json` files in your schemas directory.
 
@@ -112,80 +120,6 @@ Define database indexes in the `indexes` array.
     "unique": true
   }
 ]
-```
-
-## 💻 Generated API Reference
-
-Each generated model (e.g., `User`) includes the following static methods.
-
-### Core CRUD
-
-```zig
-// Find by ID
-const user = try User.findById(&pool, allocator, "uuid-string");
-
-// Find All (supports soft delete filtering)
-const users = try User.findAll(&pool, allocator, false); // false = hide deleted
-
-// Insert
-const id = try User.insert(&pool, allocator, .{
-    .email = "test@example.com",
-    .name = "Test User",
-});
-
-// Insert and Return Full Object
-const user = try User.insertAndReturn(&pool, allocator, .{ ... });
-
-// Update
-try User.update(&pool, "uuid-string", .{
-    .name = "Updated Name", // Optional fields
-});
-
-// Update and Return
-const updated = try User.updateAndReturn(&pool, allocator, "uuid", .{ ... });
-
-// Upsert (Insert or Update on conflict)
-const id = try User.upsert(&pool, allocator, .{ ... });
-```
-
-### Deletion
-
-```zig
-// Soft Delete (requires 'deleted_at' field in schema)
-try User.softDelete(&pool, "uuid-string");
-
-// Hard Delete (permanent)
-try User.hardDelete(&pool, "uuid-string");
-```
-
-### Query Builder
-
-Fluent API for complex queries.
-
-```zig
-// Returns []UpdateInput (fields marked for update)
-const results = try User.query()
-    .where(.{
-        .field = .age,
-        .operator = .gt,
-        .value = "$1",
-    })
-    .orderBy(.{
-        .field = .created_at,
-        .direction = .desc,
-    })
-    .limit(10)
-    .fetch(&pool, allocator, .{18});
-```
-
-### DDL Operations
-
-```zig
-try User.createTable(&pool);
-try User.createIndexes(&pool);
-try User.dropTable(&pool);
-try User.truncate(&pool);
-const exists = try User.tableExists(&pool);
 ```
 
 ## 🔌 Integration

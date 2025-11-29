@@ -270,7 +270,7 @@ pub fn QueryBuilder(comptime T: type, comptime K: type) type {
             return self;
         }
 
-        fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
+        pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
             var sql = std.ArrayList(u8){};
             defer sql.deinit(allocator);
 
