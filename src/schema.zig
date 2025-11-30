@@ -116,8 +116,8 @@ pub const Field = struct {
     not_null: bool = true,
 
     // Generation hints
-    create_input: InputMode = .excluded,
-    update_input: bool = false,
+    create_input: InputMode = .required,
+    update_input: bool = true,
 
     // JSON response hints
     redacted: bool = false, // If true, field is excluded from toJsonResponseSafe()
@@ -126,6 +126,28 @@ pub const Field = struct {
     default_value: ?[]const u8 = null,
     auto_generated: bool = false,
     auto_generate_type: AutoGenerateType = .none,
+};
+
+pub const Alter = struct {
+    name: []const u8,
+    type: ?FieldType = null,
+
+    // Constraints
+    primary_key: ?bool = null,
+    unique: ?bool = null,
+    not_null: ?bool = null,
+
+    // Generation hints
+    create_input: ?InputMode = null,
+    update_input: ?bool = null,
+
+    // JSON response hints
+    redacted: ?bool = null, // If true, field is excluded from toJsonResponseSafe()
+
+    // SQL defaults
+    default_value: ?[]const u8 = null,
+    auto_generated: ?bool = null,
+    auto_generate_type: ?AutoGenerateType = null,
 };
 
 pub const Index = struct {

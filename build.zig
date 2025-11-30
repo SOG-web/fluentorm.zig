@@ -4,10 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Schema type definitions module
-    const schema_mod = b.addModule("schema", .{
-        .root_source_file = b.path("src/schema.zig"),
-        .target = target,
+    const fluentzig = b.addModule("fluentzig", .{
+        .root_source_file = b.path("src/root.zig"),
     });
 
     const pg = b.dependency("pg", .{
@@ -23,7 +21,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "schema", .module = schema_mod },
+                .{ .name = "fluentzig", .module = fluentzig },
                 .{ .name = "pg", .module = pg.module("pg") },
             },
         }),
