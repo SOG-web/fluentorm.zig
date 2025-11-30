@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const fluentzig = b.addModule("fluentzig", .{
+    const fluentzig = b.addModule("fluentorm", .{
         .root_source_file = b.path("src/root.zig"),
     });
 
@@ -15,13 +15,13 @@ pub fn build(b: *std.Build) void {
 
     // Generator executable - Standalone model generator
     const gen_exe = b.addExecutable(.{
-        .name = "zig-model-gen",
+        .name = "fluentzig-gen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/generate_model.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "fluentzig", .module = fluentzig },
+                .{ .name = "fluentorm", .module = fluentzig },
                 .{ .name = "pg", .module = pg.module("pg") },
             },
         }),

@@ -1,15 +1,15 @@
 // Model Generator - Generates Zig model files from JSON schema definitions
 const std = @import("std");
 
-const schema_mod = @import("schema");
+const generateRegistry = @import("registry_generator.zig").generateRegistry;
+const schema_mod = @import("schema.zig");
 const Schema = schema_mod.Schema;
 const Field = schema_mod.Field;
 const FieldType = schema_mod.FieldType;
 const InputMode = schema_mod.InputMode;
 const Index = schema_mod.Index;
 const Relationship = schema_mod.Relationship;
-
-const json_parser = @import("json_parser.zig");
+const writeSchemaToFile = @import("sql_generator.zig").writeSchemaToFile;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -34,90 +34,20 @@ pub fn main() !void {
     std.debug.print("Scanning schemas directory: {s}\n", .{schemas_dir});
     std.debug.print("Output directory: {s}\n\n", .{output_dir});
 
-    // Open schemas directory
-    var dir = std.fs.cwd().openDir(schemas_dir, .{ .iterate = true }) catch |err| {
-        std.debug.print("❌ Error: Cannot open directory '{s}': {}\n", .{ schemas_dir, err });
+    const registry_path = try std.fmt.allocPrint(allocator, "{s}/registry.zig", .{schemas_dir});
+    defer allocator.free(registry_path);
+
+    generateRegistry(
+        schemas_dir,
+        registry_path,
+    ) catch |err| {
+        std.debug.print("❌ Error generating registry: {}\n", .{err});
         return err;
     };
-    defer dir.close();
 
-    // Iterate through all JSON schema files
-    var iterator = dir.iterate();
-    var count: usize = 0;
-
-    while (try iterator.next()) |entry| {
-        // Only process .json files
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".json")) continue;
-
-        const schema_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ schemas_dir, entry.name });
-        defer allocator.free(schema_path);
-
-        std.debug.print("📄 Processing: {s}\n", .{schema_path});
-
-        // Read JSON file
-        const file = std.fs.cwd().openFile(schema_path, .{}) catch |err| {
-            std.debug.print("  ❌ Error opening file: {}\n\n", .{err});
-            continue;
-        };
-        defer file.close();
-
-        const json_content = file.readToEndAlloc(allocator, 1024 * 1024) catch |err| {
-            std.debug.print("  ❌ Error reading file: {}\n\n", .{err});
-            continue;
-        };
-        defer allocator.free(json_content);
-
-        // Parse JSON schema
-        const schema = json_parser.parseJsonSchema(allocator, json_content) catch |err| {
-            std.debug.print("  ❌ Schema validation failed: {}\n\n", .{err});
-            continue;
-        };
-        defer {
-            // Free schema data after use
-            allocator.free(schema.table_name);
-            allocator.free(schema.struct_name);
-            for (schema.fields) |field| {
-                allocator.free(field.name);
-                if (field.default_value) |dv| {
-                    allocator.free(dv);
-                }
-            }
-            allocator.free(schema.fields);
-            for (schema.indexes) |index| {
-                allocator.free(index.name);
-                for (index.columns) |col| {
-                    allocator.free(col);
-                }
-                allocator.free(index.columns);
-            }
-            allocator.free(schema.indexes);
-            for (schema.relationships) |rel| {
-                allocator.free(rel.name);
-                allocator.free(rel.column);
-                allocator.free(rel.references_table);
-                allocator.free(rel.references_column);
-            }
-            allocator.free(schema.relationships);
-        }
-
-        // Generate model
-        try generateModel(allocator, schema, schema_path, output_dir);
-        count += 1;
-        std.debug.print("\n", .{});
-    }
-
-    if (count == 0) {
-        std.debug.print("⚠️  No models generated\n", .{});
-        std.debug.print("Make sure:\n", .{});
-        std.debug.print("  1. Schema files have .json extension\n", .{});
-        std.debug.print("  2. JSON is valid and follows the schema format\n", .{});
-        std.debug.print("  3. Schema directory exists and is readable\n", .{});
-    } else {
-        // Copy base.zig to output directory if it doesn't exist
-        try copyBaseModel(allocator, output_dir);
-        std.debug.print("✅ Successfully generated {d} model(s)\n", .{count});
-    }
+    // Copy base.zig to output directory if it doesn't exist
+    try copyBaseModel(allocator, output_dir);
+    std.debug.print("✅ Successfully generated models\n", .{});
 }
 
 /// Copy base.zig, query.zig, and transaction.zig to the output directory
