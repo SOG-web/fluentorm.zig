@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const Alter = @import("schema.zig").Alter;
 const AutoGenerateType = @import("schema.zig").AutoGenerateType;
 const Field = @import("schema.zig").Field;
 const FieldType = @import("schema.zig").FieldType;
@@ -31,7 +32,7 @@ pub const TableSchema = @This();
 
 name: []const u8,
 fields: std.ArrayList(Field) = .{},
-alters: std.ArrayList(FieldInput) = .{},
+alters: std.ArrayList(Field) = .{},
 indexes: std.ArrayList(Index) = .{},
 drop_indexes: std.ArrayList([]const u8) = .{},
 relationships: std.ArrayList(Relationship) = .{},
@@ -52,12 +53,12 @@ err: ?anyerror = null,
 //     return .{ .self = self };
 // }
 
-pub fn create(name: []const u8, allocator: std.mem.Allocator, builder: fn (self: *TableSchema) void) !TableSchema {
+pub fn create(name: []const u8, allocator: std.mem.Allocator, builder: *const fn (self: *TableSchema) void) !TableSchema {
     var self = TableSchema{
         .name = name,
         .allocator = allocator,
         .fields = std.ArrayList(Field){},
-        .alters = std.ArrayList(FieldInput){},
+        .alters = std.ArrayList(Field){},
         .indexes = std.ArrayList(Index){},
         .relationships = std.ArrayList(Relationship){},
     };
@@ -389,7 +390,7 @@ pub fn foreigns(self: *TableSchema, rels: []const Relationship) void {
     };
 }
 
-pub fn alterField(self: *TableSchema, field: FieldInput) void {
+pub fn alterField(self: *TableSchema, field: Alter) void {
     if (self.err != null) return;
     if (self.fields.items.len == 0) {
         self.err = error.NoFields;
@@ -402,17 +403,24 @@ pub fn alterField(self: *TableSchema, field: FieldInput) void {
         return;
     };
 
-    if (exist == null) {
-        self.err = error.FieldNotFound;
-        return;
-    }
-
-    self.alters.append(self.allocator, field) catch |err| {
+    self.alters.append(self.allocator, .{
+        .name = field.name,
+        .type = if (field.type) |t| t else exist.type,
+        .primary_key = if (field.primary_key) |pk| pk else exist.primary_key,
+        .unique = if (field.unique) |u| u else exist.unique,
+        .not_null = if (field.not_null) |nn| nn else exist.not_null,
+        .create_input = if (field.create_input) |ci| ci else exist.create_input,
+        .update_input = if (field.update_input) |ui| ui else exist.update_input,
+        .redacted = if (field.redacted) |r| r else exist.redacted,
+        .default_value = if (field.default_value) |dv| dv else exist.default_value,
+        .auto_generated = if (field.auto_generated) |ag| ag else exist.auto_generated,
+        .auto_generate_type = if (field.auto_generate_type) |agt| agt else exist.auto_generate_type,
+    }) catch |err| {
         self.err = err;
     };
 }
 
-pub fn alterFields(self: *TableSchema, fields: []const FieldInput) void {
+pub fn alterFields(self: *TableSchema, fields: []const Alter) void {
     if (self.err != null) return;
     if (self.fields.items.len == 0) {
         self.err = error.NoFields;

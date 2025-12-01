@@ -4,10 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Schema type definitions module
-    const schema_mod = b.addModule("schema", .{
-        .root_source_file = b.path("src/schema.zig"),
-        .target = target,
+    const fluentzig = b.addModule("fluentorm", .{
+        .root_source_file = b.path("src/root.zig"),
     });
 
     const pg = b.dependency("pg", .{
@@ -17,13 +15,13 @@ pub fn build(b: *std.Build) void {
 
     // Generator executable - Standalone model generator
     const gen_exe = b.addExecutable(.{
-        .name = "zig-model-gen",
+        .name = "fluentzig-gen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/generate_model.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "schema", .module = schema_mod },
+                .{ .name = "fluentorm", .module = fluentzig },
                 .{ .name = "pg", .module = pg.module("pg") },
             },
         }),
