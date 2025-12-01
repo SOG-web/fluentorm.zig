@@ -60,11 +60,11 @@ pub fn generateRegistry(schemas_dir: []const u8, output_file: []const u8) !void 
         try registry.writer(allocator).print("const {s}_schema = @import(\"{s}.zig\");\n", .{ schema.name, schema.filename });
     }
 
-    try registry.appendSlice(allocator, "\npub const schemas = [_]SchemaBuilder{{\n");
+    try registry.appendSlice(allocator, "\npub const schemas = [_]SchemaBuilder{\n");
     for (schemas.items) |schema| {
         try registry.writer(allocator).print("    .{{ .name = \"{s}\", .builder_fn = {s}_schema.build }},\n", .{ schema.name, schema.name });
     }
-    try registry.appendSlice(allocator, "}};\n\n");
+    try registry.appendSlice(allocator, "};\n\n");
 
     try registry.appendSlice(allocator,
         \\pub fn getAllSchemas(allocator: std.mem.Allocator) ![]TableSchema {
