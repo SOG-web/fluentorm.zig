@@ -119,6 +119,8 @@ fn generateRunner(
         \\        try sql_generator.writeSchemaToFile(allocator, schema, sql_output_dir);
         \\        try model_generator.generateModel(allocator, schema, schema_file, output_dir);
         \\    }}
+        \\
+        \\    try model_generator.generateBarrelFile(allocator, schemas, output_dir);
         \\}}
         \\
     , .{ output_dir, sql_output_dir });

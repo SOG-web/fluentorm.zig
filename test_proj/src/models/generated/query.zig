@@ -112,9 +112,9 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
         ///
         /// Example:
         /// ```zig
-        /// .select(.{ .id, .name })
+        /// .select(&.{ .id, .name })
         /// ```
-        pub fn select(self: *Self, fields: SelectField) *Self {
+        pub fn select(self: *Self, fields: []const FE) *Self {
             for (fields) |field| {
                 const _field = std.fmt.allocPrint(
                     self.arena.allocator(),
@@ -384,7 +384,8 @@ test "query builder" {
         }
     };
 
-    const UserQuery = QueryBuilder(User);
+    const FieldEnum = enum { id, name };
+    const UserQuery = QueryBuilder(User, User, FieldEnum);
     var query = UserQuery.init();
     defer query.deinit();
     _ = query.select(&.{ .id, .name }).where(.{
