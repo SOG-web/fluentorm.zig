@@ -15,7 +15,7 @@ pub const TableSchema = @import("table.zig");
 
 pub const SchemaBuilder = struct {
     name: []const u8,
-    builder_fn: *const fn (*TableSchema) void,
+    builder_fn: fn (*TableSchema) void,
 };
 
 test {
