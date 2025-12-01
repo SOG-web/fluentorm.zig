@@ -53,12 +53,12 @@ err: ?anyerror = null,
 //     return .{ .self = self };
 // }
 
-pub fn create(name: []const u8, allocator: std.mem.Allocator, builder: fn (self: *TableSchema) void) !TableSchema {
+pub fn create(name: []const u8, allocator: std.mem.Allocator, builder: *const fn (self: *TableSchema) void) !TableSchema {
     var self = TableSchema{
         .name = name,
         .allocator = allocator,
         .fields = std.ArrayList(Field){},
-        .alters = std.ArrayList(FieldInput){},
+        .alters = std.ArrayList(Field){},
         .indexes = std.ArrayList(Index){},
         .relationships = std.ArrayList(Relationship){},
     };
