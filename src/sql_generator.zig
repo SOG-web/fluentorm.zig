@@ -37,7 +37,7 @@ fn generateFieldSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8), field
     }
 }
 
-pub fn generateCreateTableSQL(allocator: std.mem.Allocator, table: *const TableSchema) ![]u8 {
+pub fn generateCreateTableSQL(allocator: std.mem.Allocator, table: TableSchema) ![]u8 {
     var sql = std.ArrayList(u8){};
     errdefer sql.deinit(allocator);
 

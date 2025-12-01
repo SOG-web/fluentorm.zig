@@ -71,7 +71,7 @@ pub fn generateRegistry(schemas_dir: []const u8, output_file: []const u8) !void 
         \\    var result = std.ArrayList(TableSchema){};
         \\    errdefer {
         \\        for (result.items) |*schema| {
-        \\            schema.deinit(allocator);
+        \\            schema.deinit();
         \\        }
         \\        result.deinit(allocator);
         \\    }
