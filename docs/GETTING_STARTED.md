@@ -135,7 +135,7 @@ Create `schemas/01_users.zig`:
 ```zig
 const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
-
+pub const table_name = "users";
 pub fn build(t: *TableSchema) void {
     // Primary key
     t.uuid(.{
@@ -325,7 +325,7 @@ Create `schemas/02_posts.zig`:
 ```zig
 const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
-
+pub const table_name = "posts";
 pub fn build(t: *TableSchema) void {
     t.uuid(.{
         .name = "id",
@@ -362,6 +362,8 @@ And update `schemas/01_users.zig` to add hasMany:
 ```zig
 const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
+
+pub const table_name = "users";
 
 pub fn build(t: *TableSchema) void {
     // ... existing fields ...
