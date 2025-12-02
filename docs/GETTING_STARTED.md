@@ -29,7 +29,7 @@ This updates `build.zig.zon`:
 ```zig
 .dependencies = .{
     .fluentorm = .{
-        .url = "git+https://github.com/your-username/fluentorm#<hash>",
+        .url = "git+https://github.com/SOG-web/fluentorm#<hash>",
         .hash = "<hash>",
     },
 },
