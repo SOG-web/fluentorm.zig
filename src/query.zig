@@ -1033,18 +1033,14 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
             var result = try db.queryOpts(sql, args, .{
                 .column_names = true,
             });
-
+            defer result.deinit();
             // Check if there's at least one row
             if (try result.next()) |_| {
-                // Reset by returning a fresh result - can't easily "rewind"
-                // Actually, we need to return the result for the caller to use
-                // Let's just return the result and let caller handle it
-                result.deinit();
                 return try db.queryOpts(sql, args, .{
                     .column_names = true,
                 });
             }
-            result.deinit();
+
             return null;
         }
 
