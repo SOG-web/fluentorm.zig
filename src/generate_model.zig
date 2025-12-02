@@ -98,7 +98,8 @@ fn generateRunner(
         \\    defer _ = gpa.deinit();
         \\    const allocator = gpa.allocator();
         \\
-        \\    const schemas = try registry.getAllSchemas(allocator);
+        \\    // Use merged schemas - multiple schema files with same table_name are combined
+        \\    const schemas = try registry.getAllSchemasMerged(allocator);
         \\    defer {{
         \\        for (schemas) |*s| s.deinit();
         \\        allocator.free(schemas);
@@ -110,16 +111,14 @@ fn generateRunner(
         \\    try std.fs.cwd().makePath(output_dir);
         \\    try std.fs.cwd().makePath(sql_output_dir);
         \\
-        \\    // Get file prefixes from registry
-        \\    const prefixes = registry.getFilePrefixes();
-        \\
         \\    for (schemas, 0..) |schema, i| {{
         \\        // Use schema name as the source file name for comments
         \\        const schema_file = try std.fmt.allocPrint(allocator, "{{s}}.zig", .{{schema.name}});
         \\        defer allocator.free(schema_file);
         \\
-        \\        // Get the file prefix (e.g., "01", "02") for ordering migrations
-        \\        const file_prefix = prefixes[i];
+        \\        // Use index as file prefix for now (will be replaced by migration system)
+        \\        const file_prefix = try std.fmt.allocPrint(allocator, "{{d:0>2}}", .{{i + 1}});
+        \\        defer allocator.free(file_prefix);
         \\
         \\        try sql_generator.writeSchemaToFile(allocator, schema, sql_output_dir, file_prefix);
         \\        try model_generator.generateModel(allocator, schema, schema_file, output_dir);
