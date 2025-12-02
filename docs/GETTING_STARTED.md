@@ -21,7 +21,7 @@ zig init
 Add FluentORM to your project:
 
 ```bash
-zig fetch --save git+https://github.com/your-username/fluentorm#main
+zig fetch --save git+https://github.com/SOG-web/fluentorm#main
 ```
 
 This updates `build.zig.zon`:
