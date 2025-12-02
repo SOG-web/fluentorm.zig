@@ -344,7 +344,6 @@ t.hasMany(.{
 ## Requirements
 
 - **Zig**: 0.15.1 or later
-- **PostgreSQL**: 12+ (uses `gen_random_uuid()` for UUID generation)
 - **pg.zig**: Automatically included as a transitive dependency
 
 ## Contributing
