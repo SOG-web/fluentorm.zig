@@ -363,4 +363,3 @@ MIT
 ## Acknowledgments
 
 - Built with [pg.zig](https://github.com/karlseguin/pg.zig) for PostgreSQL connectivity
-- Inspired by modern ORMs like Prisma and TypeORM
