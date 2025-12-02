@@ -8,6 +8,68 @@ This document outlines the plan for implementing a comprehensive migration syste
 2. **Schema merging** - Multiple schema files can contribute to the same table
 3. **Automatic migration runner** - Single command to apply all pending migrations
 
+## Implementation Progress
+
+| Phase                     | Status      | Description                                                         |
+| ------------------------- | ----------- | ------------------------------------------------------------------- |
+| Phase 1: Schema Merging   | ✅ COMPLETE | Multiple schema files can contribute to same table via `table_name` |
+| Phase 2: Snapshot System  | ✅ COMPLETE | `src/snapshot.zig` - saves/loads schema state to JSON               |
+| Phase 3: Diff Engine      | ✅ COMPLETE | `src/diff.zig` - detects changes between snapshots                  |
+| Phase 4: Migration Files  | ✅ COMPLETE | `src/sql_generator.zig` - generates one file per change             |
+| Phase 5: Migration Runner | 🔲 TODO     | Execute migrations against database                                 |
+| Phase 6: Update & Docs    | 🔲 TODO     | Update documentation                                                |
+
+### Completed Components
+
+- **`src/snapshot.zig`** - Schema snapshot generation and loading
+
+  - `createDatabaseSnapshot()` - Creates snapshot from TableSchema array
+  - `saveSnapshot()` - Saves snapshot to JSON file
+  - `loadSnapshot()` - Loads snapshot from JSON file
+  - Tracks: tables, fields, indexes, relationships, has_many
+
+- **`src/diff.zig`** - Diff engine for detecting changes
+
+  - `diffSnapshots()` - Compares two snapshots
+  - Detects: new/removed/modified tables, fields, indexes, relationships
+  - Returns `SchemaDiff` with all changes
+
+- **`src/sql_generator.zig`** - Incremental migration file generator
+
+  - `writeIncrementalMigrationFiles()` - Generates one file per change
+  - Supports: CREATE TABLE, ADD COLUMN, DROP COLUMN, ALTER COLUMN
+  - Supports: ADD INDEX, DROP INDEX, ADD FK, DROP FK
+  - Generates both up and down migrations
+
+- **`src/registry_generator.zig`** - Groups schemas by `table_name`
+
+  - Extracts `pub const table_name` from schema files
+  - Groups multiple files contributing to same table
+  - Generates `registry.zig` with `getAllSchemas()`
+
+- **`src/generate_model.zig`** - CLI that generates runner.zig
+  - Updated to use snapshot/diff/incremental approach
+  - Configurable paths (schemas_dir, output_dir, sql_output_dir)
+
+### Migration File Naming
+
+Files are named with Unix timestamps for ordering:
+
+```
+migrations/
+├── 1764673549_create_users.sql
+├── 1764673549_create_users_down.sql
+├── 1764673550_create_posts.sql
+├── 1764673550_create_posts_down.sql
+├── 1764673551_posts_add_index_idx_posts_user_created.sql
+├── 1764673551_posts_add_index_idx_posts_user_created_down.sql
+├── 1764673552_posts_add_fk_user_id.sql
+├── 1764673552_posts_add_fk_user_id_down.sql
+└── ...
+```
+
+---
+
 ## Current Problems
 
 ### Problem 1: No Incremental Migrations
