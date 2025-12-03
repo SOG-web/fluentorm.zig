@@ -412,11 +412,11 @@ if (try post.fetchPostAuthor(&pool, allocator)) |author| {
 
 ### Explore Advanced Features
 
-- **Complex Queries**: [QUERY.md](/QUERY.md)
-- **Transactions**: [TRANSACTION.md](/TRANSACTION.md)
-- **Relationships**: [RELATIONSHIPS.md](/RELATIONSHIPS.md)
-- **Field Types**: [SCHEMA.md](/SCHEMA.md)
-- **Migrations**: [MIGRATIONS.md](/MIGRATIONS.md)
+- **Complex Queries**: [QUERY.md](QUERY.md)
+- **Transactions**: [TRANSACTION.md](TRANSACTION.md)
+- **Relationships**: [RELATIONSHIPS.md](RELATIONSHIPS.md)
+- **Field Types**: [SCHEMA.md](SCHEMA.md)
+- **Migrations**: [MIGRATIONS.md](MIGRATIONS.md)
 
 ## Common Issues
 
