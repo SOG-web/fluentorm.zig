@@ -171,6 +171,10 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
             self.group_clauses.clearAndFree(self.arena.allocator());
             self.having_clauses.clearAndFree(self.arena.allocator());
             self.join_clauses.clearAndFree(self.arena.allocator());
+            self.limit_val = null;
+            self.offset_val = null;
+            self.include_deleted = false;
+            self.distinct_enabled = false;
         }
 
         /// Add a SELECT clause
@@ -851,25 +855,8 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
             }
 
             // Check select clauses for aggregates, aliases, or raw SQL patterns
-            for (self.select_clauses.items) |clause| {
-                // Check for aggregate function patterns: COUNT(, SUM(, AVG(, MIN(, MAX(
-                if (std.mem.indexOf(u8, clause, "(") != null) {
-                    return true;
-                }
-                // Check for AS alias (indicates custom projection)
-                if (std.mem.indexOf(u8, clause, " AS ") != null or
-                    std.mem.indexOf(u8, clause, " as ") != null)
-                {
-                    return true;
-                }
-                // Check for table.column pattern (indicates join-like select)
-                if (std.mem.indexOf(u8, clause, ".") != null) {
-                    return true;
-                }
-                // Check for wildcard with table prefix (e.g., "users.*")
-                if (std.mem.indexOf(u8, clause, ".*") != null) {
-                    return true;
-                }
+            if (self.select_clauses.items.len > 0) {
+                return true;
             }
 
             return false;
@@ -889,7 +876,7 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
         ///     .fetch(&pool, allocator, .{});
         /// defer allocator.free(users);
         /// ```
-        pub fn fetch(self: *Self, db: *pg.Pool, allocator: std.mem.Allocator, args: anytype) ![]K {
+        pub fn fetch(self: *Self, db: *pg.Pool, allocator: std.mem.Allocator, args: anytype) ![]T {
             // Guard: reject queries with custom projections that can't map to K
             if (self.hasCustomProjection()) {
                 return error.CustomProjectionRequiresFetchAs;
@@ -975,7 +962,7 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
         /// Execute query and return first item or null.
         /// Returns an error if the query contains custom projections (JOINs, GROUP BY, aggregates, etc.).
         /// Use `firstAs` for custom result types or `firstRaw` for direct access.
-        pub fn first(self: *Self, db: *pg.Pool, allocator: std.mem.Allocator, args: anytype) !?K {
+        pub fn first(self: *Self, db: *pg.Pool, allocator: std.mem.Allocator, args: anytype) !?T {
             // Guard: reject queries with custom projections that can't map to K
             if (self.hasCustomProjection()) {
                 return error.CustomProjectionRequiresFetchAs;
