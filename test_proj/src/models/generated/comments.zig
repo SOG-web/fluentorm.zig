@@ -44,7 +44,7 @@ deleted_at: ?i64,
     pub const CreateInput = struct {
         post_id: []const u8,
         user_id: []const u8,
-        parent_id: ??[]const u8 = null,
+        parent_id: ?[]const u8 = null,
         content: []const u8,
         is_approved: ?bool = null,
     };
@@ -53,7 +53,7 @@ deleted_at: ?i64,
     pub const UpdateInput = struct {
         post_id: ?[]const u8 = null,
         user_id: ?[]const u8 = null,
-        parent_id: ??[]const u8 = null,
+        parent_id: ?[]const u8 = null,
         content: ?[]const u8 = null,
         is_approved: ?bool = null,
         like_count: ?i32 = null,
@@ -77,7 +77,7 @@ deleted_at: ?i64,
     pub fn insertParams(data: CreateInput) struct {
         []const u8,
         []const u8,
-        ??[]const u8,
+        ?[]const u8,
         []const u8,
         ?bool,
     } {
@@ -99,8 +99,7 @@ deleted_at: ?i64,
             \\    content = COALESCE($5, content),
             \\    is_approved = COALESCE($6, is_approved),
             \\    like_count = COALESCE($7, like_count),
-            \\    updated_at = COALESCE($8, updated_at),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    updated_at = COALESCE($8, updated_at)
             \\WHERE id = $1
         ;
     }
@@ -109,7 +108,7 @@ deleted_at: ?i64,
         []const u8,
         ?[]const u8,
         ?[]const u8,
-        ??[]const u8,
+        ?[]const u8,
         ?[]const u8,
         ?bool,
         ?i32,

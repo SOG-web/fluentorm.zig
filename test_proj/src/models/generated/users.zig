@@ -109,8 +109,7 @@ bio: ?[]const u8,
             \\    is_active = COALESCE($6, is_active),
             \\    updated_at = COALESCE($7, updated_at),
             \\    phone = COALESCE($8, phone),
-            \\    bio = COALESCE($9, bio),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    bio = COALESCE($9, bio)
             \\WHERE id = $1
         ;
     }
@@ -150,8 +149,7 @@ bio: ?[]const u8,
             \\    password_hash = EXCLUDED.password_hash,
             \\    is_active = EXCLUDED.is_active,
             \\    phone = EXCLUDED.phone,
-            \\    bio = EXCLUDED.bio,
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    bio = EXCLUDED.bio
             \\RETURNING id
         ;
     }

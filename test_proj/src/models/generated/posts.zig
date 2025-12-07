@@ -53,7 +53,6 @@ deleted_at: ?i64,
         user_id: ?[]const u8 = null,
         is_published: ?bool = null,
         view_count: ?i32 = null,
-        updated_at: ?i64 = null,
     };
 
     // Model configuration
@@ -91,9 +90,7 @@ deleted_at: ?i64,
             \\    content = COALESCE($3, content),
             \\    user_id = COALESCE($4, user_id),
             \\    is_published = COALESCE($5, is_published),
-            \\    view_count = COALESCE($6, view_count),
-            \\    updated_at = COALESCE($7, updated_at),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    view_count = COALESCE($6, view_count)
             \\WHERE id = $1
         ;
     }
@@ -105,7 +102,6 @@ deleted_at: ?i64,
         ?[]const u8,
         ?bool,
         ?i32,
-        ?i64,
     } {
         return .{
             id,
@@ -114,7 +110,6 @@ deleted_at: ?i64,
             data.user_id,
             data.is_published,
             data.view_count,
-            data.updated_at,
         };
     }
 

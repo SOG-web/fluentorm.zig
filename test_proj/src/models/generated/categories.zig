@@ -99,8 +99,7 @@ updated_at: i64,
             \\    color = COALESCE($5, color),
             \\    sort_order = COALESCE($6, sort_order),
             \\    is_active = COALESCE($7, is_active),
-            \\    updated_at = COALESCE($8, updated_at),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    updated_at = COALESCE($8, updated_at)
             \\WHERE id = $1
         ;
     }
@@ -136,8 +135,7 @@ updated_at: i64,
             \\    description = EXCLUDED.description,
             \\    color = EXCLUDED.color,
             \\    sort_order = EXCLUDED.sort_order,
-            \\    is_active = EXCLUDED.is_active,
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    is_active = EXCLUDED.is_active
             \\RETURNING id
         ;
     }

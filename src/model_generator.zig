@@ -501,8 +501,11 @@ fn generateUpdateSQL(writer: anytype, schema: TableSchema, fields: []const Field
     try writer.writeAll("        return\n");
     try writer.print("            \\\\UPDATE {s} SET\n", .{schema.name});
 
-    for (updates.items) |update| {
+    for (updates.items, 0..) |update, i| {
         try writer.writeAll(update);
+        if (i < updates.items.len - 1) {
+            try writer.writeAll(",");
+        }
         try writer.writeAll("\n");
     }
 
@@ -580,9 +583,11 @@ fn generateUpsertSQL(writer: anytype, schema: TableSchema, fields: []const Field
     try writer.print("            \\\\) VALUES ({s})\n", .{params_str});
     try writer.print("            \\\\ON CONFLICT ({s}) DO UPDATE SET\n", .{unique_field.?});
 
-    for (updates.items) |update| {
+    for (updates.items, 0..) |update, i| {
         try writer.writeAll(update);
-
+        if (i < updates.items.len - 1) {
+            try writer.writeAll(",");
+        }
         try writer.writeAll("\n");
     }
 
