@@ -68,8 +68,7 @@ created_at: i64,
         return
             \\UPDATE post_categories SET
             \\    post_id = COALESCE($2, post_id),
-            \\    category_id = COALESCE($3, category_id),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    category_id = COALESCE($3, category_id)
             \\WHERE id = $1
         ;
     }

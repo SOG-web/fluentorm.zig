@@ -504,10 +504,9 @@ fn generateUpdateSQL(writer: anytype, schema: TableSchema, fields: []const Field
     for (updates.items, 0..) |update, i| {
         try writer.writeAll(update);
         if (i < updates.items.len - 1) {
-            try writer.writeAll(",\n");
-        } else {
-            try writer.writeAll(",\n");
+            try writer.writeAll(",");
         }
+        try writer.writeAll("\n");
     }
 
     try writer.writeAll("            \\\\WHERE id = $1\n");
@@ -587,10 +586,9 @@ fn generateUpsertSQL(writer: anytype, schema: TableSchema, fields: []const Field
     for (updates.items, 0..) |update, i| {
         try writer.writeAll(update);
         if (i < updates.items.len - 1) {
-            try writer.writeAll(",\n");
-        } else {
-            try writer.writeAll(",\n");
+            try writer.writeAll(",");
         }
+        try writer.writeAll("\n");
     }
 
     try writer.writeAll("            \\\\RETURNING id\n");

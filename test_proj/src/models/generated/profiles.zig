@@ -99,8 +99,7 @@ updated_at: i64,
             \\    website = COALESCE($5, website),
             \\    location = COALESCE($6, location),
             \\    date_of_birth = COALESCE($7, date_of_birth),
-            \\    updated_at = COALESCE($8, updated_at),
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    updated_at = COALESCE($8, updated_at)
             \\WHERE id = $1
         ;
     }
@@ -137,8 +136,7 @@ updated_at: i64,
             \\    avatar_url = EXCLUDED.avatar_url,
             \\    website = EXCLUDED.website,
             \\    location = EXCLUDED.location,
-            \\    date_of_birth = EXCLUDED.date_of_birth,
-            \\    updated_at = CURRENT_TIMESTAMP
+            \\    date_of_birth = EXCLUDED.date_of_birth
             \\RETURNING id
         ;
     }
