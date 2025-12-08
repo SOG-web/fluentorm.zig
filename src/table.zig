@@ -365,7 +365,7 @@ pub fn softDelete(self: *TableSchema) void {
         .create_input = .excluded,
         .update_input = false,
         .redacted = false,
-        .default_value = "CURRENT_TIMESTAMP",
+        .default_value = null,
         .auto_generated = true,
         .auto_generate_type = .timestamp,
     }) catch |err| {
