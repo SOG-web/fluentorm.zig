@@ -1,14 +1,14 @@
 const std = @import("std");
 
 const diff_mod = @import("diff.zig");
-const snapshot_mod = @import("snapshot.zig");
-
 const SchemaDiff = diff_mod.SchemaDiff;
 const TableChange = diff_mod.TableChange;
 const FieldChange = diff_mod.FieldChange;
 const IndexChange = diff_mod.IndexChange;
 const RelationshipChange = diff_mod.RelationshipChange;
 const ChangeType = diff_mod.ChangeType;
+const schema = @import("schema.zig");
+const snapshot_mod = @import("snapshot.zig");
 const FieldSnapshot = snapshot_mod.FieldSnapshot;
 const IndexSnapshot = snapshot_mod.IndexSnapshot;
 const RelationshipSnapshot = snapshot_mod.RelationshipSnapshot;
@@ -43,6 +43,34 @@ fn fieldTypeToPgType(type_str: []const u8) []const u8 {
     return "TEXT"; // fallback
 }
 
+fn fieldTypeToEnum(type_str: []const u8) schema.FieldType {
+    if (std.mem.eql(u8, type_str, "uuid")) return schema.FieldType.uuid;
+    if (std.mem.eql(u8, type_str, "uuid_optional")) return schema.FieldType.uuid_optional;
+    if (std.mem.eql(u8, type_str, "text")) return schema.FieldType.text;
+    if (std.mem.eql(u8, type_str, "text_optional")) return schema.FieldType.text_optional;
+    if (std.mem.eql(u8, type_str, "bool")) return schema.FieldType.bool;
+    if (std.mem.eql(u8, type_str, "bool_optional")) return schema.FieldType.bool_optional;
+    if (std.mem.eql(u8, type_str, "i16")) return schema.FieldType.i16;
+    if (std.mem.eql(u8, type_str, "i16_optional")) return schema.FieldType.i16_optional;
+    if (std.mem.eql(u8, type_str, "i32")) return schema.FieldType.i32;
+    if (std.mem.eql(u8, type_str, "i32_optional")) return schema.FieldType.i32_optional;
+    if (std.mem.eql(u8, type_str, "i64")) return schema.FieldType.i64;
+    if (std.mem.eql(u8, type_str, "i64_optional")) return schema.FieldType.i64_optional;
+    if (std.mem.eql(u8, type_str, "f32")) return schema.FieldType.f32;
+    if (std.mem.eql(u8, type_str, "f32_optional")) return schema.FieldType.f32_optional;
+    if (std.mem.eql(u8, type_str, "f64")) return schema.FieldType.f64;
+    if (std.mem.eql(u8, type_str, "f64_optional")) return schema.FieldType.f64_optional;
+    if (std.mem.eql(u8, type_str, "timestamp")) return schema.FieldType.timestamp;
+    if (std.mem.eql(u8, type_str, "timestamp_optional")) return schema.FieldType.timestamp_optional;
+    if (std.mem.eql(u8, type_str, "json")) return schema.FieldType.json;
+    if (std.mem.eql(u8, type_str, "json_optional")) return schema.FieldType.json_optional;
+    if (std.mem.eql(u8, type_str, "jsonb")) return schema.FieldType.jsonb;
+    if (std.mem.eql(u8, type_str, "jsonb_optional")) return schema.FieldType.jsonb_optional;
+    if (std.mem.eql(u8, type_str, "binary")) return schema.FieldType.binary;
+    if (std.mem.eql(u8, type_str, "binary_optional")) return schema.FieldType.binary_optional;
+    return schema.FieldType.text; // fallback
+}
+
 fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8), field: FieldSnapshot) !void {
     try sql.appendSlice(allocator, "  ");
     try sql.appendSlice(allocator, field.name);
@@ -73,7 +101,32 @@ fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
         }
     } else if (field.default_value) |default| {
         try sql.appendSlice(allocator, " DEFAULT ");
-        try sql.appendSlice(allocator, default);
+        const default_type = fieldTypeToEnum(field.type);
+        switch (default_type) {
+            .text, .text_optional => {
+                try sql.appendSlice(allocator, "'");
+                try sql.appendSlice(allocator, default);
+                try sql.appendSlice(allocator, "'");
+            },
+            .uuid, .uuid_optional => {
+                try sql.appendSlice(allocator, "'");
+                try sql.appendSlice(allocator, default);
+                try sql.appendSlice(allocator, "'");
+            },
+            .json, .json_optional, .jsonb, .jsonb_optional => {
+                try sql.appendSlice(allocator, "'");
+                try sql.appendSlice(allocator, default);
+                try sql.appendSlice(allocator, "'");
+            },
+            .binary, .binary_optional => {
+                try sql.appendSlice(allocator, "'");
+                try sql.appendSlice(allocator, default);
+                try sql.appendSlice(allocator, "'");
+            },
+            else => {
+                try sql.appendSlice(allocator, default);
+            },
+        }
     }
 }
 

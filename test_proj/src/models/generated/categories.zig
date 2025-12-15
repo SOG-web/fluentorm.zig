@@ -4,15 +4,14 @@
 // To regenerate: zig run scripts/generate_model.zig -- categories.zig
 
 const std = @import("std");
-
 const pg = @import("pg");
-
 const BaseModel = @import("base.zig").BaseModel;
-const PostCategories = @import("post_categories.zig");
 const QueryBuilder = @import("query.zig").QueryBuilder;
 const Transaction = @import("transaction.zig").Transaction;
 
 // Related models
+const PostCategories = @import("post_categories.zig");
+
 const Categories = @This();
 
 // Fields
@@ -25,261 +24,263 @@ sort_order: i32,
 is_active: bool,
 created_at: i64,
 updated_at: i64,
-pub const FieldEnum = enum {
-    id,
-    name,
-    slug,
-    description,
-    color,
-    sort_order,
-    is_active,
-    created_at,
-    updated_at,
-};
-
-pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-    allocator.free(self.id);
-    allocator.free(self.name);
-    allocator.free(self.slug);
-    if (self.description) |v| allocator.free(v);
-    if (self.color) |v| allocator.free(v);
-}
-
-// Input type for creating new records
-pub const CreateInput = struct {
-    name: []const u8,
-    slug: []const u8,
-    description: ?[]const u8 = null,
-    color: ?[]const u8 = null,
-    sort_order: ?i32 = null,
-    is_active: ?bool = null,
-};
-
-// Input type for updating existing records
-pub const UpdateInput = struct {
-    name: ?[]const u8 = null,
-    slug: ?[]const u8 = null,
-    description: ?[]const u8 = null,
-    color: ?[]const u8 = null,
-    sort_order: ?i32 = null,
-    is_active: ?bool = null,
-    updated_at: ?i64 = null,
-};
-
-// Model configuration
-pub fn tableName() []const u8 {
-    return "categories";
-}
-
-pub fn insertSQL() []const u8 {
-    return 
-    \\INSERT INTO categories (
-    \\    name, slug, description, color, sort_order, is_active
-    \\) VALUES ($1, $2, $3, COALESCE($4, '#3B82F6'), COALESCE($5, 0), COALESCE($6, true))
-    \\RETURNING id
-    ;
-}
-
-pub fn insertParams(data: CreateInput) struct {
-    []const u8,
-    []const u8,
-    ?[]const u8,
-    ?[]const u8,
-    ?i32,
-    ?bool,
-} {
-    return .{
-        data.name,
-        data.slug,
-        data.description,
-        data.color,
-        data.sort_order,
-        data.is_active,
-    };
-}
-
-pub fn updateSQL() []const u8 {
-    return 
-    \\UPDATE categories SET
-    \\    name = COALESCE($2, name),
-    \\    slug = COALESCE($3, slug),
-    \\    description = COALESCE($4, description),
-    \\    color = COALESCE($5, color),
-    \\    sort_order = COALESCE($6, sort_order),
-    \\    is_active = COALESCE($7, is_active),
-    \\    updated_at = COALESCE($8, updated_at)
-    \\WHERE id = $1
-    ;
-}
-
-pub fn updateParams(id: []const u8, data: UpdateInput) struct {
-    []const u8,
-    ?[]const u8,
-    ?[]const u8,
-    ?[]const u8,
-    ?[]const u8,
-    ?i32,
-    ?bool,
-    ?i64,
-} {
-    return .{
+    pub const FieldEnum = enum {
         id,
-        data.name,
-        data.slug,
-        data.description,
-        data.color,
-        data.sort_order,
-        data.is_active,
-        data.updated_at,
+        name,
+        slug,
+        description,
+        color,
+        sort_order,
+        is_active,
+        created_at,
+        updated_at,
     };
-}
 
-pub fn upsertSQL() []const u8 {
-    return 
-    \\INSERT INTO categories (
-    \\    name, slug, description, color, sort_order, is_active
-    \\) VALUES ($1, $2, $3, $4, $5, $6)
-    \\ON CONFLICT (name) DO UPDATE SET
-    \\    description = EXCLUDED.description,
-    \\    color = EXCLUDED.color,
-    \\    sort_order = EXCLUDED.sort_order,
-    \\    is_active = EXCLUDED.is_active
-    \\RETURNING id
-    ;
-}
 
-pub fn upsertParams(data: CreateInput) struct {
-    []const u8,
-    []const u8,
-    ?[]const u8,
-    ?[]const u8,
-    ?i32,
-    ?bool,
-} {
-    return .{
-        data.name,
-        data.slug,
-        data.description,
-        data.color,
-        data.sort_order,
-        data.is_active,
-    };
-}
-
-const base = BaseModel(Categories);
-// DDL operations
-
-pub const truncate = base.truncate;
-
-pub const tableExists = base.tableExists;
-
-// CRUD operations
-pub const findById = base.findById;
-
-pub const findAll = base.findAll;
-
-pub const insert = base.insert;
-
-pub const insertMany = base.insertMany;
-
-pub const insertAndReturn = base.insertAndReturn;
-
-pub const update = base.update;
-
-pub const updateAndReturn = base.updateAndReturn;
-
-pub const upsert = base.upsert;
-
-pub const upsertAndReturn = base.upsertAndReturn;
-
-pub const softDelete = base.softDelete;
-
-pub const hardDelete = base.hardDelete;
-
-pub const count = base.count;
-
-pub const fromRow = base.fromRow;
-
-pub fn query() QueryBuilder(Categories, UpdateInput, FieldEnum) {
-    return QueryBuilder(Categories, UpdateInput, FieldEnum).init();
-}
-
-/// JSON-safe response struct with UUIDs as hex strings
-pub const JsonResponse = struct {
-    id: [36]u8,
-    name: []const u8,
-    slug: []const u8,
-    description: ?[]const u8,
-    color: ?[]const u8,
-    sort_order: i32,
-    is_active: bool,
-    created_at: i64,
-    updated_at: i64,
-};
-
-/// Convert model to JSON-safe response with UUIDs as hex strings
-pub fn toJsonResponse(self: Categories) !JsonResponse {
-    return JsonResponse{
-        .id = try pg.uuidToHex(&self.id[0..16].*),
-        .name = self.name,
-        .slug = self.slug,
-        .description = self.description,
-        .color = self.color,
-        .sort_order = self.sort_order,
-        .is_active = self.is_active,
-        .created_at = self.created_at,
-        .updated_at = self.updated_at,
-    };
-}
-
-/// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
-pub const JsonResponseSafe = struct {
-    id: [36]u8,
-    name: []const u8,
-    slug: []const u8,
-    description: ?[]const u8,
-    color: ?[]const u8,
-    sort_order: i32,
-    is_active: bool,
-    created_at: i64,
-    updated_at: i64,
-};
-
-/// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
-pub fn toJsonResponseSafe(self: Categories) !JsonResponseSafe {
-    return JsonResponseSafe{
-        .id = try pg.uuidToHex(&self.id[0..16].*),
-        .name = self.name,
-        .slug = self.slug,
-        .description = self.description,
-        .color = self.color,
-        .sort_order = self.sort_order,
-        .is_active = self.is_active,
-        .created_at = self.created_at,
-        .updated_at = self.updated_at,
-    };
-}
-// Relationship methods
-/// Fetch all related PostCategories records for this Categories (one-to-many)
-pub fn fetchPosts(self: *const Categories, db: *pg.Pool, allocator: std.mem.Allocator) ![]PostCategories {
-    const queryt = "SELECT * FROM post_categories WHERE category_id = $1";
-    var result = try db.query(queryt, .{self.id});
-    defer result.deinit();
-
-    var list = std.ArrayList(PostCategories){};
-    errdefer list.deinit(allocator);
-
-    while (try result.next()) |row| {
-        const item = try row.to(PostCategories, .{ .allocator = allocator, .map = .ordinal });
-        try list.append(allocator, item);
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.name);
+        allocator.free(self.slug);
+        if (self.description) |v| allocator.free(v);
+        if (self.color) |v| allocator.free(v);
     }
 
-    return try list.toOwnedSlice(allocator);
-}
+    // Input type for creating new records
+    pub const CreateInput = struct {
+        name: []const u8,
+        slug: []const u8,
+        description: ?[]const u8 = null,
+        color: ?[]const u8 = null,
+        sort_order: ?i32 = null,
+        is_active: ?bool = null,
+    };
 
-// Transaction support
-pub const TransactionType = Transaction(Categories);
+    // Input type for updating existing records
+    pub const UpdateInput = struct {
+        name: ?[]const u8 = null,
+        slug: ?[]const u8 = null,
+        description: ?[]const u8 = null,
+        color: ?[]const u8 = null,
+        sort_order: ?i32 = null,
+        is_active: ?bool = null,
+        updated_at: ?i64 = null,
+    };
 
-pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-    return TransactionType.begin(conn);
-}
+    // Model configuration
+    pub fn tableName() []const u8 {
+        return "categories";
+    }
+
+    pub fn insertSQL() []const u8 {
+        return
+            \\INSERT INTO categories (
+            \\    name, slug, description, color, sort_order, is_active
+            \\) VALUES ($1, $2, $3, COALESCE($4, '#3B82F6'), COALESCE($5, 0), COALESCE($6, true))
+            \\RETURNING id
+        ;
+    }
+
+    pub fn insertParams(data: CreateInput) struct {
+        []const u8,
+        []const u8,
+        ?[]const u8,
+        ?[]const u8,
+        ?i32,
+        ?bool,
+    } {
+        return .{
+            data.name,
+            data.slug,
+            data.description,
+            data.color,
+            data.sort_order,
+            data.is_active,
+        };
+    }
+
+    pub fn updateSQL() []const u8 {
+        return
+            \\UPDATE categories SET
+            \\    name = COALESCE($2, name),
+            \\    slug = COALESCE($3, slug),
+            \\    description = COALESCE($4, description),
+            \\    color = COALESCE($5, color),
+            \\    sort_order = COALESCE($6, sort_order),
+            \\    is_active = COALESCE($7, is_active),
+            \\    updated_at = COALESCE($8, updated_at)
+            \\WHERE id = $1
+        ;
+    }
+
+    pub fn updateParams(id: []const u8, data: UpdateInput) struct {
+        []const u8,
+        ?[]const u8,
+        ?[]const u8,
+        ?[]const u8,
+        ?[]const u8,
+        ?i32,
+        ?bool,
+        ?i64,
+    } {
+        return .{
+            id,
+            data.name,
+            data.slug,
+            data.description,
+            data.color,
+            data.sort_order,
+            data.is_active,
+            data.updated_at,
+        };
+    }
+
+    pub fn upsertSQL() []const u8 {
+        return
+            \\INSERT INTO categories (
+            \\    name, slug, description, color, sort_order, is_active
+            \\) VALUES ($1, $2, $3, $4, $5, $6)
+            \\ON CONFLICT (name) DO UPDATE SET
+            \\    description = EXCLUDED.description,
+            \\    color = EXCLUDED.color,
+            \\    sort_order = EXCLUDED.sort_order,
+            \\    is_active = EXCLUDED.is_active
+            \\RETURNING id
+        ;
+    }
+
+    pub fn upsertParams(data: CreateInput) struct {
+        []const u8,
+        []const u8,
+        ?[]const u8,
+        ?[]const u8,
+        ?i32,
+        ?bool,
+    } {
+        return .{
+            data.name,
+            data.slug,
+            data.description,
+            data.color,
+            data.sort_order,
+            data.is_active,
+        };
+    }
+
+    const base = BaseModel(Categories);
+    // DDL operations
+
+    pub const truncate = base.truncate;
+
+    pub const tableExists = base.tableExists;
+
+    // CRUD operations
+    pub const findById = base.findById;
+
+    pub const findAll = base.findAll;
+
+    pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
+
+    pub const insertAndReturn = base.insertAndReturn;
+
+    pub const update = base.update;
+
+    pub const updateAndReturn = base.updateAndReturn;
+
+    pub const upsert = base.upsert;
+
+    pub const upsertAndReturn = base.upsertAndReturn;
+
+    pub const softDelete = base.softDelete;
+
+    pub const hardDelete = base.hardDelete;
+
+    pub const count = base.count;
+
+    pub const fromRow = base.fromRow;
+
+    pub fn query() QueryBuilder(Categories, UpdateInput, FieldEnum) {
+        return QueryBuilder(Categories, UpdateInput, FieldEnum).init();
+    }
+
+
+    /// JSON-safe response struct with UUIDs as hex strings
+    pub const JsonResponse = struct {
+        id: [36]u8,
+        name: []const u8,
+        slug: []const u8,
+        description: ?[]const u8,
+        color: ?[]const u8,
+        sort_order: i32,
+        is_active: bool,
+        created_at: i64,
+        updated_at: i64,
+    };
+
+    /// Convert model to JSON-safe response with UUIDs as hex strings
+    pub fn toJsonResponse(self: Categories) !JsonResponse {
+        return JsonResponse{
+            .id = try pg.uuidToHex(&self.id[0..16].*),
+            .name = self.name,
+            .slug = self.slug,
+            .description = self.description,
+            .color = self.color,
+            .sort_order = self.sort_order,
+            .is_active = self.is_active,
+            .created_at = self.created_at,
+            .updated_at = self.updated_at,
+        };
+    }
+
+    /// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
+    pub const JsonResponseSafe = struct {
+        id: [36]u8,
+        name: []const u8,
+        slug: []const u8,
+        description: ?[]const u8,
+        color: ?[]const u8,
+        sort_order: i32,
+        is_active: bool,
+        created_at: i64,
+        updated_at: i64,
+    };
+
+    /// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
+    pub fn toJsonResponseSafe(self: Categories) !JsonResponseSafe {
+        return JsonResponseSafe{
+            .id = try pg.uuidToHex(&self.id[0..16].*),
+            .name = self.name,
+            .slug = self.slug,
+            .description = self.description,
+            .color = self.color,
+            .sort_order = self.sort_order,
+            .is_active = self.is_active,
+            .created_at = self.created_at,
+            .updated_at = self.updated_at,
+        };
+    }
+    // Relationship methods
+    /// Fetch all related PostCategories records for this Categories (one-to-many)
+    pub fn fetchPosts(self: *const Categories, db: *pg.Pool, allocator: std.mem.Allocator) ![]PostCategories {
+        const queryt = "SELECT * FROM post_categories WHERE category_id = $1";
+        var result = try db.query(queryt, .{self.id});
+        defer result.deinit();
+
+        var list = std.ArrayList(PostCategories){};
+        errdefer list.deinit(allocator);
+
+        while (try result.next()) |row| {
+            const item = try row.to(PostCategories, .{ .allocator = allocator, .map = .ordinal });
+            try list.append(allocator, item);
+        }
+
+        return try list.toOwnedSlice(allocator);
+    }
+
+    // Transaction support
+    pub const TransactionType = Transaction(Categories);
+
+    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
+        return TransactionType.begin(conn);
+    }
