@@ -143,6 +143,102 @@ pub fn BaseModel(comptime T: type) type {
             return error.InsertFailed;
         }
 
+        /// Insert multiple new records in a single query
+        pub fn insertMany(
+            db: *pg.Pool,
+            allocator: std.mem.Allocator,
+            data_list: []const T.CreateInput,
+        ) ![]const []const u8 {
+            if (data_list.len == 0) return &[_][]const u8{};
+
+            if (!@hasDecl(T, "tableName")) {
+                @compileError("Model must implement 'tableName() []const u8'");
+            }
+            if (!@hasDecl(T, "insertSQL")) {
+                @compileError("Model must implement 'insertSQL() []const u8'");
+            }
+            if (!@hasDecl(T, "insertParams")) {
+                @compileError("Model must implement 'insertParams(data: CreateInput) anytype'");
+            }
+
+            // 2. Build SQL with multiple placeholders
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            const temp_alloc = arena.allocator();
+
+            // Parse insertSQL to separate "INSERT INTO ... VALUES" from "RETURNING ..."
+            const base_sql = T.insertSQL();
+            // We search for " VALUES " which is standard in our generated models
+            const values_token = " VALUES ";
+            const values_index = std.mem.indexOf(u8, base_sql, values_token) orelse return error.InvalidModelSQL;
+
+            // prefix includes " VALUES "
+            const prefix = base_sql[0 .. values_index + values_token.len];
+
+            // Find "RETURNING"
+            const returning_token = " RETURNING ";
+            const returning_index = std.mem.lastIndexOf(u8, base_sql, returning_token);
+
+            const suffix = if (returning_index) |idx| base_sql[idx..] else "";
+
+            // Determine params per row by checking how many fields insertParams returns
+            const sample_data = data_list[0];
+            const sample_params = T.insertParams(sample_data);
+            const params_per_row = @typeInfo(@TypeOf(sample_params)).@"struct".fields.len;
+
+            var sql_builder = std.ArrayList(u8){};
+            defer sql_builder.deinit(temp_alloc);
+
+            try sql_builder.appendSlice(temp_alloc, prefix);
+
+            var param_counter: usize = 1;
+            for (0..data_list.len) |i| {
+                if (i > 0) try sql_builder.append(temp_alloc, ",");
+                try sql_builder.append(temp_alloc, "(");
+                for (0..params_per_row) |j| {
+                    if (j > 0) try sql_builder.append(temp_alloc, ",");
+                    try sql_builder.writer().print("${d}", .{param_counter});
+                    param_counter += 1;
+                }
+                try sql_builder.append(temp_alloc, ')');
+            }
+
+            if (suffix.len > 0) {
+                try sql_builder.appendSlice(temp_alloc, suffix);
+            }
+
+            const conn = try db.acquire();
+            defer db.release(conn);
+
+            // 3. Prepare and Bind
+            var stmt = try conn.prepare(sql_builder.items);
+            defer stmt.deinit();
+
+            for (data_list) |item| {
+                const params = T.insertParams(item);
+                inline for (params) |p| {
+                    try stmt.bind(p);
+                }
+            }
+
+            // 4. Execute and collect IDs
+            var result = try stmt.execute();
+            defer result.deinit();
+
+            var ids = std.ArrayList([]const u8){};
+            errdefer {
+                for (ids.items) |id| allocator.free(id);
+                ids.deinit(allocator);
+            }
+
+            while (try result.next()) |row| {
+                const id = row.get([]const u8, 0);
+                try ids.append(allocator, try allocator.dupe(u8, id));
+            }
+
+            return try ids.toOwnedSlice(allocator);
+        }
+
         /// Insert a new record and return the full model
         pub fn insertAndReturn(db: *pg.Pool, allocator: std.mem.Allocator, data: anytype) !T {
             if (!@hasDecl(T, "tableName")) {

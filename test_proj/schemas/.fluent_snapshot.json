@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": 1765181744,
+  "created_at": 1765812580,
   "tables": [
     {
       "name": "users",
@@ -11,7 +11,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -142,7 +142,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -172,7 +172,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -223,7 +223,7 @@
           "unique": false,
           "not_null": false,
           "default_value": null,
-          "auto_generated": true,
+          "auto_generated": false,
           "auto_generate_type": "timestamp"
         }
       ],
@@ -266,7 +266,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -276,7 +276,7 @@
           "primary_key": false,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -374,7 +374,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -487,7 +487,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -497,7 +497,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -507,7 +507,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -563,7 +563,7 @@
           "primary_key": true,
           "unique": true,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -573,7 +573,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -583,7 +583,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": true,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },
@@ -593,7 +593,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": false,
-          "default_value": null,
+          "default_value": "gen_random_uuid()",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },

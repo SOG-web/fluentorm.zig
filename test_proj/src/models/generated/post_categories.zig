@@ -28,6 +28,12 @@ created_at: i64,
     };
 
 
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.post_id);
+        allocator.free(self.category_id);
+    }
+
     // Input type for creating new records
     pub const CreateInput = struct {
         post_id: []const u8,
@@ -98,6 +104,8 @@ created_at: i64,
     pub const findAll = base.findAll;
 
     pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
 
     pub const insertAndReturn = base.insertAndReturn;
 
