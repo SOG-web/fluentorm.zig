@@ -42,6 +42,16 @@ bio: ?[]const u8,
     };
 
 
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.email);
+        allocator.free(self.name);
+        if (self.bid) |v| allocator.free(v);
+        allocator.free(self.password_hash);
+        if (self.phone) |v| allocator.free(v);
+        if (self.bio) |v| allocator.free(v);
+    }
+
     // Input type for creating new records
     pub const CreateInput = struct {
         email: []const u8,
@@ -184,6 +194,8 @@ bio: ?[]const u8,
     pub const findAll = base.findAll;
 
     pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
 
     pub const insertAndReturn = base.insertAndReturn;
 

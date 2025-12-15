@@ -1047,6 +1047,37 @@ pub fn QueryBuilder(comptime T: type, comptime K: type, comptime FE: type) type 
             return null;
         }
 
+        /// Delete a record
+        pub fn delete(self: *Self, db: *pg.Pool, args: anytype) !void {
+            const temp_allocator = self.arena.allocator();
+            var comp_sql = std.ArrayList(u8){};
+            defer comp_sql.deinit(temp_allocator);
+
+            const table_name = T.tableName();
+            try comp_sql.writer(temp_allocator).print("DELETE FROM {s}", .{table_name});
+
+            var first_where = true;
+            // Handle soft deletes
+            const has_deleted_at = @hasField(T, "deleted_at");
+            if (has_deleted_at and !self.include_deleted) {
+                try comp_sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+                first_where = false;
+            }
+
+            for (self.where_clauses.items) |clause| {
+                if (first_where) {
+                    try comp_sql.appendSlice(temp_allocator, " WHERE ");
+                    first_where = false;
+                } else {
+                    try comp_sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+                }
+                try comp_sql.appendSlice(temp_allocator, clause.sql);
+            }
+
+            var result = try db.query(comp_sql.items, args);
+            defer result.deinit();
+        }
+
         /// Count records matching the query
         pub fn count(self: *Self, db: *pg.Pool, args: anytype) !i64 {
             const temp_allocator = self.arena.allocator();

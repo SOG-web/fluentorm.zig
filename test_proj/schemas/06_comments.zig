@@ -36,9 +36,7 @@ pub fn build(t: *TableSchema) void {
     });
 
     // Comment content - required
-    t.string(.{
-        .name = "content",
-    });
+    t.string(.{ .name = "content", .default_value = "name" });
 
     // Is approved flag (for moderation)
     t.boolean(.{

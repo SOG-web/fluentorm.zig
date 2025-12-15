@@ -38,6 +38,13 @@ deleted_at: ?i64,
     };
 
 
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.title);
+        allocator.free(self.content);
+        allocator.free(self.user_id);
+    }
+
     // Input type for creating new records
     pub const CreateInput = struct {
         title: []const u8,
@@ -127,6 +134,8 @@ deleted_at: ?i64,
     pub const findAll = base.findAll;
 
     pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
 
     pub const insertAndReturn = base.insertAndReturn;
 

@@ -37,6 +37,14 @@ updated_at: i64,
     };
 
 
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.name);
+        allocator.free(self.slug);
+        if (self.description) |v| allocator.free(v);
+        if (self.color) |v| allocator.free(v);
+    }
+
     // Input type for creating new records
     pub const CreateInput = struct {
         name: []const u8,
@@ -171,6 +179,8 @@ updated_at: i64,
     pub const findAll = base.findAll;
 
     pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
 
     pub const insertAndReturn = base.insertAndReturn;
 

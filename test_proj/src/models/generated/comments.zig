@@ -40,6 +40,14 @@ deleted_at: ?i64,
     };
 
 
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.post_id);
+        allocator.free(self.user_id);
+        if (self.parent_id) |v| allocator.free(v);
+        allocator.free(self.content);
+    }
+
     // Input type for creating new records
     pub const CreateInput = struct {
         post_id: []const u8,
@@ -69,7 +77,7 @@ deleted_at: ?i64,
         return
             \\INSERT INTO comments (
             \\    post_id, user_id, parent_id, content, is_approved
-            \\) VALUES ($1, $2, $3, $4, COALESCE($5, true))
+            \\) VALUES ($1, $2, COALESCE($3, gen_random_uuid()), $4, COALESCE($5, true))
             \\RETURNING id
         ;
     }
@@ -139,6 +147,8 @@ deleted_at: ?i64,
     pub const findAll = base.findAll;
 
     pub const insert = base.insert;
+
+    pub const insertMany = base.insertMany;
 
     pub const insertAndReturn = base.insertAndReturn;
 

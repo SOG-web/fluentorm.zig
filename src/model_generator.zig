@@ -216,6 +216,9 @@ pub fn generateModel(allocator: std.mem.Allocator, schema: TableSchema, schema_f
     // Generate struct definition
     try generateStructDefinition(writer, schema, struct_name, final_fields, allocator);
 
+    // Generate Deinit
+    try generateDeinit(writer, final_fields, allocator);
+
     // Generate CreateInput
     try generateCreateInput(writer, final_fields, allocator);
 
@@ -334,6 +337,24 @@ fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_name: [
     try writer.writeAll("    };\n");
 
     try writer.writeAll("\n\n");
+}
+
+fn generateDeinit(writer: anytype, fields: []const Field, allocator: std.mem.Allocator) !void {
+    _ = allocator;
+    try writer.writeAll("    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
+
+    for (fields) |field| {
+        const zig_type = field.type.toZigType();
+        if (std.mem.eql(u8, zig_type, "[]const u8") or std.mem.eql(u8, zig_type, "?[]const u8")) {
+            if (field.type.isOptional()) {
+                try writer.print("        if (self.{s}) |v| allocator.free(v);\n", .{field.name});
+            } else {
+                try writer.print("        allocator.free(self.{s});\n", .{field.name});
+            }
+        }
+    }
+
+    try writer.writeAll("    }\n\n");
 }
 
 fn generateCreateInput(writer: anytype, fields: []const Field, allocator: std.mem.Allocator) !void {
@@ -657,6 +678,8 @@ fn generateCRUDWrappers(writer: anytype, struct_name: []const u8, has_upsert: bo
         \\    pub const findAll = base.findAll;
         \\
         \\    pub const insert = base.insert;
+        \\
+        \\    pub const insertMany = base.insertMany;
         \\
         \\    pub const insertAndReturn = base.insertAndReturn;
         \\
