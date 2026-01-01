@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Field = @import("schema.zig").Field;
+const FieldType = @import("schema.zig").FieldType;
 const HasManyRelationship = @import("schema.zig").HasManyRelationship;
 const Relationship = @import("schema.zig").Relationship;
 const TableSchema = @import("table.zig").TableSchema;
@@ -420,6 +421,13 @@ fn generateSQLMethods(writer: anytype, schema: TableSchema, struct_name: []const
     return has_upsert;
 }
 
+fn typeIsnumeric(field_type: FieldType) bool {
+    return switch (field_type) {
+        .i16, .i16_optional, .i32, .i32_optional, .i64, .i64_optional, .f32, .f32_optional, .f64, .f64_optional => true,
+        else => false,
+    };
+}
+
 fn generateInsertSQL(writer: anytype, schema: TableSchema, fields: []const Field, allocator: std.mem.Allocator) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -439,8 +447,13 @@ fn generateInsertSQL(writer: anytype, schema: TableSchema, fields: []const Field
 
             const param_str = try std.fmt.allocPrint(arena_allocator, "${d}", .{param_num});
             if (field.create_input == .optional and field.default_value != null) {
-                const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
-                try params.append(arena_allocator, coalesce);
+                if (typeIsnumeric(field.type)) {
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
+                    try params.append(arena_allocator, coalesce);
+                } else {
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, '{s}')", .{ param_num, field.default_value.? });
+                    try params.append(arena_allocator, coalesce);
+                }
             } else {
                 try params.append(arena_allocator, param_str);
             }
