@@ -222,7 +222,7 @@ pub fn BaseModel(comptime T: type) type {
                 std.log.err("Failed to prepare statement: {s}\n", .{@errorName(err)});
                 return err;
             };
-            defer stmt.deinit();
+            errdefer stmt.deinit();
 
             for (data_list) |item| {
                 const params = T.insertParams(item);

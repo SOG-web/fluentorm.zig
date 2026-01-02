@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Field = @import("schema.zig").Field;
+const FieldType = @import("schema.zig").FieldType;
 const HasManyRelationship = @import("schema.zig").HasManyRelationship;
 const Relationship = @import("schema.zig").Relationship;
 const TableSchema = @import("table.zig").TableSchema;
@@ -420,6 +421,13 @@ fn generateSQLMethods(writer: anytype, schema: TableSchema, struct_name: []const
     return has_upsert;
 }
 
+fn typeIsnumeric(field_type: FieldType) bool {
+    return switch (field_type) {
+        .i16, .i16_optional, .i32, .i32_optional, .i64, .i64_optional, .f32, .f32_optional, .f64, .f64_optional => true,
+        else => false,
+    };
+}
+
 fn generateInsertSQL(writer: anytype, schema: TableSchema, fields: []const Field, allocator: std.mem.Allocator) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -439,8 +447,13 @@ fn generateInsertSQL(writer: anytype, schema: TableSchema, fields: []const Field
 
             const param_str = try std.fmt.allocPrint(arena_allocator, "${d}", .{param_num});
             if (field.create_input == .optional and field.default_value != null) {
-                const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
-                try params.append(arena_allocator, coalesce);
+                if (typeIsnumeric(field.type)) {
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
+                    try params.append(arena_allocator, coalesce);
+                } else {
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, '{s}')", .{ param_num, field.default_value.? });
+                    try params.append(arena_allocator, coalesce);
+                }
             } else {
                 try params.append(arena_allocator, param_str);
             }
@@ -727,7 +740,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s}: ", .{field.name});
 
         // Convert UUID fields to [36]u8 hex strings
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.writeAll("[36]u8");
         } else {
             // Keep the same type for non-UUID fields
@@ -752,6 +765,8 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         // Convert UUID fields using pg.uuidToHex
         if (field.type == .uuid) {
             try writer.print("try pg.uuidToHex(&self.{s}[0..16].*)", .{field.name});
+        } else if (field.type == .uuid_optional) {
+            try writer.print("if (self.{s}) |id| try pg.uuidToHex(&id[0..16].*) else null,", .{field.name});
         } else {
             try writer.print("self.{s}", .{field.name});
         }
@@ -772,7 +787,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s}: ", .{field.name});
 
         // Convert UUID fields to [36]u8 hex strings
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.writeAll("[36]u8");
         } else {
             // Keep the same type for non-UUID fields
@@ -799,6 +814,8 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         // Convert UUID fields using pg.uuidToHex
         if (field.type == .uuid) {
             try writer.print("try pg.uuidToHex(&self.{s}[0..16].*)", .{field.name});
+        } else if (field.type == .uuid_optional) {
+            try writer.print("if (self.{s}) |id| try pg.uuidToHex(&id[0..16].*) else null,", .{field.name});
         } else {
             try writer.print("self.{s}", .{field.name});
         }
