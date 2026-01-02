@@ -740,7 +740,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s}: ", .{field.name});
 
         // Convert UUID fields to [36]u8 hex strings
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.writeAll("[36]u8");
         } else {
             // Keep the same type for non-UUID fields
@@ -763,7 +763,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s} = ", .{field.name});
 
         // Convert UUID fields using pg.uuidToHex
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.print("try pg.uuidToHex(&self.{s}[0..16].*)", .{field.name});
         } else {
             try writer.print("self.{s}", .{field.name});
@@ -785,7 +785,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s}: ", .{field.name});
 
         // Convert UUID fields to [36]u8 hex strings
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.writeAll("[36]u8");
         } else {
             // Keep the same type for non-UUID fields
@@ -810,7 +810,7 @@ fn generateJsonResponseHelpers(writer: anytype, struct_name: []const u8, fields:
         try writer.print("{s} = ", .{field.name});
 
         // Convert UUID fields using pg.uuidToHex
-        if (field.type == .uuid) {
+        if (field.type == .uuid or field.type == .uuid_optional) {
             try writer.print("try pg.uuidToHex(&self.{s}[0..16].*)", .{field.name});
         } else {
             try writer.print("self.{s}", .{field.name});
