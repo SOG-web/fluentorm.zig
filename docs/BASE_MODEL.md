@@ -13,8 +13,24 @@ When you run `zig build generate-models`, FluentORM generates:
 - **Model files** (e.g., `users.zig`, `posts.zig`) with CRUD operations
 - **base.zig** - Common utilities and CRUD implementations
 - **query.zig** - Query builder for type-safe filtering
-- **transaction.zig** - Transaction support
+- **executor.zig** - Unified database executor (Pool or Conn)
+- **transaction.zig** - Generic transaction support
 - **root.zig** - Barrel export for easy imports
+
+## The Executor Type
+
+All model methods accept an `Executor` as their first argument. The executor abstracts over `*pg.Pool` (for direct operations) and `*pg.Conn` (for transactions):
+
+```zig
+const Executor = @import("executor.zig").Executor;
+
+// Direct pool access
+const user = try Users.findById(Executor.fromPool(pool), allocator, id);
+
+// Within a transaction
+var tx = try Transaction.begin(pool);
+const user = try Users.findById(tx.executor(), allocator, id);
+```
 
 ## CRUD Operations
 
@@ -23,7 +39,9 @@ When you run `zig build generate-models`, FluentORM generates:
 Insert a new record and get back the primary key:
 
 ```zig
-const user_id = try Users.insert(&pool, allocator, .{
+const Executor = @import("executor.zig").Executor;
+
+const user_id = try Users.insert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
@@ -36,7 +54,7 @@ defer allocator.free(user_id);
 #### Insert and Return Full Object
 
 ```zig
-const user = try Users.insertAndReturn(&pool, allocator, .{
+const user = try Users.insertAndReturn(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
@@ -49,7 +67,7 @@ defer allocator.free(user);
 #### Find by ID
 
 ```zig
-if (try Users.findById(&pool, allocator, user_id)) |user| {
+if (try Users.findById(Executor.fromPool(pool), allocator, user_id)) |user| {
     defer allocator.free(user);
     std.debug.print("Found user: {s}\n", .{user.name});
 }
@@ -65,21 +83,21 @@ defer query.deinit();
 
 const users = try query
     .where(.{ .field = .email, .operator = .eq, .value = "$1" })
-    .fetch(&pool, allocator, .{"alice@example.com"});
+    .fetch(Executor.fromPool(pool), allocator, .{"alice@example.com"});
 defer allocator.free(users);
 ```
 
 #### Fetch all records
 
 ```zig
-const all_users = try Users.findAll(&pool, allocator, false);
+const all_users = try Users.findAll(Executor.fromPool(pool), allocator, false);
 defer allocator.free(all_users);
 ```
 
 To include soft-deleted records, pass `true`:
 
 ```zig
-const all_including_deleted = try Users.findAll(&pool, allocator, true);
+const all_including_deleted = try Users.findAll(Executor.fromPool(pool), allocator, true);
 defer allocator.free(all_including_deleted);
 ```
 
@@ -88,7 +106,7 @@ defer allocator.free(all_including_deleted);
 Update specific fields for a record:
 
 ```zig
-try Users.update(&pool, user_id, .{
+try Users.update(Executor.fromPool(pool), user_id, .{
     .name = "Alice Smith",
     .email = "alice.smith@example.com",
 });
@@ -99,7 +117,7 @@ try Users.update(&pool, user_id, .{
 #### Update and Return
 
 ```zig
-const updated_user = try Users.updateAndReturn(&pool, allocator, user_id, .{
+const updated_user = try Users.updateAndReturn(Executor.fromPool(pool), allocator, user_id, .{
     .name = "Alice Smith",
 });
 defer allocator.free(updated_user);
@@ -110,7 +128,7 @@ defer allocator.free(updated_user);
 Insert a record, or update if a unique constraint violation occurs:
 
 ```zig
-const user_id = try Users.upsert(&pool, allocator, .{
+const user_id = try Users.upsert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
@@ -123,7 +141,7 @@ defer allocator.free(user_id);
 #### Upsert and Return
 
 ```zig
-const user = try Users.upsertAndReturn(&pool, allocator, .{
+const user = try Users.upsertAndReturn(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
@@ -138,7 +156,7 @@ defer allocator.free(user);
 If your schema includes a `deleted_at` field, you can use soft deletes:
 
 ```zig
-try Users.softDelete(&pool, user_id);
+try Users.softDelete(Executor.fromPool(pool), user_id);
 ```
 
 Soft-deleted records are automatically excluded from queries by default. Use `.withDeleted()` on queries to include them.
@@ -148,7 +166,7 @@ Soft-deleted records are automatically excluded from queries by default. Use `.w
 Permanently removes the record:
 
 ```zig
-try Users.hardDelete(&pool, user_id);
+try Users.hardDelete(Executor.fromPool(pool), user_id);
 ```
 
 **Warning**: This is irreversible and bypasses any soft-delete logic.
@@ -162,7 +180,7 @@ Base models provide limited Data Definition Language (DDL) operations.
 Remove all data but keep the table structure:
 
 ```zig
-try Users.truncate(&pool);
+try Users.truncate(Executor.fromPool(pool));
 ```
 
 **Warning**: This permanently deletes all data in the table.
@@ -170,7 +188,7 @@ try Users.truncate(&pool);
 ### Check Table Existence
 
 ```zig
-const exists = try Users.tableExists(&pool);
+const exists = try Users.tableExists(Executor.fromPool(pool));
 if (exists) {
     std.debug.print("Table exists\n", .{});
 }
@@ -183,11 +201,11 @@ if (exists) {
 ### Count Records
 
 ```zig
-const total_users = try Users.count(&pool, false);
+const total_users = try Users.count(Executor.fromPool(pool), false);
 std.debug.print("Total users: {d}\n", .{total_users});
 
 // Include soft-deleted
-const total_including_deleted = try Users.count(&pool, true);
+const total_including_deleted = try Users.count(Executor.fromPool(pool), true);
 ```
 
 ### Convert Row to Model

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const pg = @import("pg");
 
+const Executor = @import("executor.zig").Executor;
 const QueryBuilder = @import("query.zig").QueryBuilder;
 
 /// Base Model provides common database operations for any model type
@@ -13,7 +14,7 @@ pub fn BaseModel(comptime T: type) type {
     }
     return struct {
         /// Truncates the table (removes all data but keeps structure)
-        pub fn truncate(db: *pg.Pool) !void {
+        pub fn truncate(db: Executor) !void {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -24,11 +25,11 @@ pub fn BaseModel(comptime T: type) type {
 
             const table_name = T.tableName();
             const sql = try std.fmt.allocPrint(temp_allocator, "TRUNCATE TABLE {s}", .{table_name});
-            _ = try db.exec(sql, .{});
+            try db.exec(sql, .{});
         }
 
         /// Checks if the table exists
-        pub fn tableExists(db: *pg.Pool) !bool {
+        pub fn tableExists(db: Executor) !bool {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -40,14 +41,14 @@ pub fn BaseModel(comptime T: type) type {
                 \\    AND table_name = $1
                 \\)
             ;
-            const result = try db.query(sql, .{table_name});
+            var result = try db.query(sql, .{table_name});
             defer result.deinit();
             // Parse result to get boolean (implementation depends on pg library)
             return false; // TODO: parse result
         }
 
         /// Find a record by ID
-        pub fn findById(db: *pg.Pool, allocator: std.mem.Allocator, id: []const u8) !?T {
+        pub fn findById(db: Executor, allocator: std.mem.Allocator, id: []const u8) !?T {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -81,7 +82,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Find all records (optionally filtered by deleted_at)
-        pub fn findAll(db: *pg.Pool, allocator: std.mem.Allocator, include_deleted: bool) ![]T {
+        pub fn findAll(db: Executor, allocator: std.mem.Allocator, include_deleted: bool) ![]T {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -117,7 +118,7 @@ pub fn BaseModel(comptime T: type) type {
 
         /// Insert a new record using CreateInput type
         /// Models should define a CreateInput type with only user-provided fields
-        pub fn insert(db: *pg.Pool, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
+        pub fn insert(db: Executor, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -147,7 +148,7 @@ pub fn BaseModel(comptime T: type) type {
 
         /// Insert multiple new records in a single query
         pub fn insertMany(
-            db: *pg.Pool,
+            db: Executor,
             allocator: std.mem.Allocator,
             data_list: []const T.CreateInput,
         ) ![]const []const u8 {
@@ -209,11 +210,9 @@ pub fn BaseModel(comptime T: type) type {
                 try sql_builder.appendSlice(temp_alloc, suffix);
             }
 
-            const conn = db.acquire() catch |err| {
-                std.log.err("Failed to acquire connection: {s}\n", .{@errorName(err)});
-                return err;
-            };
-            defer db.release(conn);
+            // Get connection - for pool mode we acquire, for conn mode we use existing
+            const conn = try db.getConn();
+            defer db.releaseConn(conn);
 
             const query_str = sql_builder.items;
 
@@ -259,7 +258,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Insert a new record and return the full model
-        pub fn insertAndReturn(db: *pg.Pool, allocator: std.mem.Allocator, data: anytype) !T {
+        pub fn insertAndReturn(db: Executor, allocator: std.mem.Allocator, data: anytype) !T {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -301,7 +300,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Update an existing record
-        pub fn update(db: *pg.Pool, id: []const u8, data: anytype) !void {
+        pub fn update(db: Executor, id: []const u8, data: anytype) !void {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -315,11 +314,11 @@ pub fn BaseModel(comptime T: type) type {
             const sql = T.updateSQL();
             const params = T.updateParams(id, data);
 
-            _ = try db.exec(sql, params);
+            try db.exec(sql, params);
         }
 
         /// Update an existing record and return the full updated model
-        pub fn updateAndReturn(db: *pg.Pool, allocator: std.mem.Allocator, id: []const u8, data: anytype) !T {
+        pub fn updateAndReturn(db: Executor, allocator: std.mem.Allocator, id: []const u8, data: anytype) !T {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -360,7 +359,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Upsert (insert or update) a record
-        pub fn upsert(db: *pg.Pool, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
+        pub fn upsert(db: Executor, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -387,7 +386,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Upsert (insert or update) a record and return the full model
-        pub fn upsertAndReturn(db: *pg.Pool, allocator: std.mem.Allocator, data: anytype) !T {
+        pub fn upsertAndReturn(db: Executor, allocator: std.mem.Allocator, data: anytype) !T {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -426,7 +425,7 @@ pub fn BaseModel(comptime T: type) type {
         }
 
         /// Soft delete a record (sets deleted_at timestamp)
-        pub fn softDelete(db: *pg.Pool, id: []const u8) !void {
+        pub fn softDelete(db: Executor, id: []const u8) !void {
             if (!@hasField(T, "deleted_at")) {
                 @compileError("Model must have 'deleted_at' field to support soft delete");
             }
@@ -440,11 +439,11 @@ pub fn BaseModel(comptime T: type) type {
 
             const table_name = T.tableName();
             const sql = try std.fmt.allocPrint(temp_allocator, "UPDATE {s} SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1", .{table_name});
-            _ = try db.exec(sql, .{id});
+            try db.exec(sql, .{id});
         }
 
         /// Hard delete a record (permanently removes from database)
-        pub fn hardDelete(db: *pg.Pool, id: []const u8) !void {
+        pub fn hardDelete(db: Executor, id: []const u8) !void {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }
@@ -455,11 +454,11 @@ pub fn BaseModel(comptime T: type) type {
 
             const table_name = T.tableName();
             const sql = try std.fmt.allocPrint(temp_allocator, "DELETE FROM {s} WHERE id = $1", .{table_name});
-            _ = try db.exec(sql, .{id});
+            try db.exec(sql, .{id});
         }
 
         /// Count records in the table
-        pub fn count(db: *pg.Pool, include_deleted: bool) !i64 {
+        pub fn count(db: Executor, include_deleted: bool) !i64 {
             if (!@hasDecl(T, "tableName")) {
                 @compileError("Model must implement 'tableName() []const u8'");
             }

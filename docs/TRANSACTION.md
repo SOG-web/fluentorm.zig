@@ -1,61 +1,240 @@
 # Transaction Documentation
 
-The generated models include built-in support for database transactions.
+FluentORM provides a generic `Transaction` system that works with any model, allowing you to perform multiple model operations atomically within a single database transaction.
 
-## Usage
-
-Transactions are handled via the `Transaction` struct, which wraps a database connection and provides transaction-aware CRUD methods.
+## Quick Start
 
 ```zig
 const Transaction = @import("transaction.zig").Transaction;
+const Executor = @import("executor.zig").Executor;
 
-// 1. Start a transaction
-var tx = try Transaction(Users).begin(conn);
-// Ensure rollback on error
-defer tx.deinit();
+// Begin a transaction
+var tx = try Transaction.begin(pool);
+defer tx.deinit(); // Auto-rollback if not committed
 
-// 2. Perform operations
-const user_id = try tx.insert(allocator, .{
-    .email = "test@example.com",
+// Use any model with tx.executor()
+const user_id = try Users.insert(tx.executor(), allocator, .{
+    .email = "alice@example.com",
+    .name = "Alice",
+    .password_hash = "hash",
 });
 
-// 3. Commit
+// Query within the same transaction
+var query = Users.query();
+const user = try query
+    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .first(tx.executor(), allocator, .{user_id});
+
+// Operations on different models
+_ = try Posts.insert(tx.executor(), allocator, .{
+    .user_id = user_id,
+    .title = "First Post",
+    .content = "Hello!",
+});
+
+// Raw SQL
+try tx.exec("UPDATE stats SET user_count = user_count + 1", .{});
+
+// Commit all changes atomically
 try tx.commit();
 ```
 
-## Methods
+## API Reference
 
-### `begin(conn: *pg.Conn) !Self`
+### Transaction Struct
 
-Starts a new transaction (`BEGIN`).
+#### `begin(pool: *pg.Pool) !Transaction`
 
-- Requires a `*pg.Conn`, not a `*pg.Pool`. You must acquire a connection from the pool first.
+Acquires a connection from the pool and starts a transaction (`BEGIN`).
 
-### `commit() !void`
+```zig
+var tx = try Transaction.begin(pool);
+```
 
-Commits the transaction (`COMMIT`).
+#### `executor() Executor`
 
-- Marks the transaction as committed.
+Returns an `Executor` that can be passed to any model method. This is how you use models within the transaction.
 
-### `rollback() !void`
+```zig
+const user_id = try Users.insert(tx.executor(), allocator, data);
+const posts = try Posts.query().fetch(tx.executor(), allocator, .{});
+```
 
-Rolls back the transaction (`ROLLBACK`).
+#### `commit() !void`
 
-- Marks the transaction as rolled back.
+Commits the transaction (`COMMIT`) and releases the connection back to the pool.
 
-### `deinit()`
+```zig
+try tx.commit();
+```
 
-Automatically rolls back the transaction if it hasn't been committed or rolled back yet.
+**Errors:**
 
-- Designed to be used with `defer`.
+- `error.TransactionAlreadyCommitted` - Already committed
+- `error.TransactionAlreadyRolledBack` - Already rolled back
 
-## Transaction-Aware CRUD
+#### `rollback() !void`
 
-The `Transaction` struct provides methods that mirror the `BaseModel` CRUD operations but execute within the transaction context.
+Rolls back the transaction (`ROLLBACK`) and releases the connection.
 
-- `insert(allocator, data)`
-- `update(id, data)`
-- `softDelete(id)`
-- `hardDelete(id)`
+```zig
+try tx.rollback();
+```
 
-> **Note**: Read operations (`findById`, `findAll`) should be performed directly on the connection (`conn`) if needed within the transaction, or using the standard model methods if outside.
+#### `deinit()`
+
+Automatically rolls back if not committed or rolled back. Use with `defer`:
+
+```zig
+var tx = try Transaction.begin(pool);
+defer tx.deinit(); // Safe cleanup
+```
+
+#### `exec(sql: []const u8, args: anytype) !void`
+
+Execute raw SQL within the transaction:
+
+```zig
+try tx.exec("UPDATE counters SET value = value + 1 WHERE name = $1", .{"visits"});
+```
+
+#### `query(sql: []const u8, args: anytype) !pg.Result`
+
+Execute a raw query within the transaction:
+
+```zig
+var result = try tx.query("SELECT * FROM logs WHERE level = $1", .{"error"});
+defer result.deinit();
+```
+
+## The Executor Type
+
+The `Executor` is a union type that abstracts over `*pg.Pool` and `*pg.Conn`:
+
+```zig
+pub const Executor = union(enum) {
+    pool: *pg.Pool,
+    conn: *pg.Conn,
+};
+```
+
+### Creating Executors
+
+```zig
+// From a pool (for non-transactional operations)
+const exec = Executor.fromPool(pool);
+
+// From a transaction
+const exec = tx.executor();
+```
+
+### Using with Models
+
+All model methods accept `Executor` as their first argument:
+
+```zig
+// Non-transactional
+const user = try Users.findById(Executor.fromPool(pool), allocator, id);
+
+// Transactional
+const user = try Users.findById(tx.executor(), allocator, id);
+```
+
+## Common Patterns
+
+### Error Handling with Auto-Rollback
+
+```zig
+fn createUserWithProfile(pool: *pg.Pool, allocator: Allocator) !void {
+    var tx = try Transaction.begin(pool);
+    defer tx.deinit(); // Rollback on error
+
+    const user_id = try Users.insert(tx.executor(), allocator, .{...});
+
+    // If this fails, deinit() will rollback the user insert
+    try Profiles.insert(tx.executor(), allocator, .{
+        .user_id = user_id,
+        ...
+    });
+
+    try tx.commit();
+}
+```
+
+### Multi-Model Operations
+
+```zig
+var tx = try Transaction.begin(pool);
+defer tx.deinit();
+
+// Work with multiple models
+const order_id = try Orders.insert(tx.executor(), allocator, order_data);
+
+for (items) |item| {
+    try OrderItems.insert(tx.executor(), allocator, .{
+        .order_id = order_id,
+        .product_id = item.product_id,
+        .quantity = item.quantity,
+    });
+}
+
+// Update inventory
+for (items) |item| {
+    try tx.exec(
+        "UPDATE products SET stock = stock - $1 WHERE id = $2",
+        .{item.quantity, item.product_id}
+    );
+}
+
+try tx.commit();
+```
+
+### Querying Within Transactions
+
+```zig
+var tx = try Transaction.begin(pool);
+defer tx.deinit();
+
+// Insert and verify
+const user_id = try Users.insert(tx.executor(), allocator, .{...});
+
+var query = Users.query();
+defer query.deinit();
+
+const user = try query
+    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .first(tx.executor(), allocator, .{user_id});
+
+if (user == null) {
+    return error.InsertVerificationFailed;
+}
+
+try tx.commit();
+```
+
+## Migration from Old API
+
+If you were using the old model-specific Transaction API:
+
+**Before (deprecated):**
+
+```zig
+var tx = try Transaction(Users).begin(conn);
+const user_id = try tx.insert(allocator, data);
+```
+
+**After (new generic API):**
+
+```zig
+var tx = try Transaction.begin(pool);
+defer tx.deinit();
+const user_id = try Users.insert(tx.executor(), allocator, data);
+try tx.commit();
+```
+
+Key changes:
+
+1. `Transaction` is no longer parameterized by model type
+2. Pass `pool` instead of `conn` to `begin()`
+3. Use `tx.executor()` with any model's methods
+4. Explicit `tx.commit()` required

@@ -269,6 +269,7 @@ fn generateImports(writer: anytype, schema: TableSchema, allocator: std.mem.Allo
         \\const std = @import("std");
         \\const pg = @import("pg");
         \\const BaseModel = @import("base.zig").BaseModel;
+        \\const Executor = @import("executor.zig").Executor;
         \\const QueryBuilder = @import("query.zig").QueryBuilder;
         \\const Transaction = @import("transaction.zig").Transaction;
         \\
@@ -1025,15 +1026,16 @@ fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_name
 }
 
 fn generateTransactionSupport(writer: anytype, struct_name: []const u8) !void {
+    _ = struct_name; // No longer model-specific
     try writer.writeAll(
-        \\    // Transaction support
-        \\    pub const TransactionType = Transaction(
+        \\    // Transaction support (use generic Transaction from transaction.zig)
+        \\    // Example:
+        \\    //   var tx = try Transaction.begin(pool);
+        \\    //   defer tx.deinit();
+        \\    //   const id = try @This().insert(tx.executor(), allocator, data);
+        \\    //   try tx.commit();
+        \\
     );
-    try writer.print("{s});\n\n", .{struct_name});
-
-    try writer.writeAll("    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {\n");
-    try writer.writeAll("        return TransactionType.begin(conn);\n");
-    try writer.writeAll("    }\n");
 }
 
 pub fn generateBarrelFile(allocator: std.mem.Allocator, schemas: []const TableSchema, output_dir: []const u8) !void {
