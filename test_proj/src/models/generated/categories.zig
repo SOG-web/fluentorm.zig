@@ -6,6 +6,8 @@
 const std = @import("std");
 const pg = @import("pg");
 const BaseModel = @import("base.zig").BaseModel;
+const Executor = @import("executor.zig").Executor;
+const includeQuery = @import("includeQuery.zig");
 const QueryBuilder = @import("query.zig").QueryBuilder;
 const Transaction = @import("transaction.zig").Transaction;
 
@@ -75,7 +77,7 @@ updated_at: i64,
         return
             \\INSERT INTO categories (
             \\    name, slug, description, color, sort_order, is_active
-            \\) VALUES ($1, $2, $3, COALESCE($4, '#3B82F6'), COALESCE($5, 0), COALESCE($6, true))
+            \\) VALUES ($1, $2, $3, COALESCE($4, ''#3B82F6''), COALESCE($5, 0), COALESCE($6, 'true'))
             \\RETURNING id
         ;
     }
@@ -278,9 +280,31 @@ updated_at: i64,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Categories);
 
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
+    // Relationship metadata for include queries
+    pub const rel_posts = includeQuery.RelationMeta{
+        .name = "posts",
+        .table = "post_categories",
+        .foreign_key = "category_id",
+        .local_key = "id",
+        .relation_type = .has_many,
+    };
+
+    /// Query Categories with Posts included (eager loading)
+    pub fn includePosts(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Categories, PostCategories, "posts") {
+        return includeQuery.executeIncludeQuery(
+            Categories,
+            PostCategories,
+            rel_posts,
+            db,
+            allocator,
+            where_clause,
+            args,
+        );
     }
+    // Transaction support (use generic Transaction from transaction.zig)
+    // Example:
+    //   var tx = try Transaction.begin(pool);
+    //   defer tx.deinit();
+    //   const id = try @This().insert(tx.executor(), allocator, data);
+    //   try tx.commit();

@@ -244,6 +244,12 @@ pub fn generateModel(allocator: std.mem.Allocator, schema: TableSchema, schema_f
     // Generate relationship methods
     try generateRelationshipMethods(writer, schema, struct_name, allocator);
 
+    // Generate relationship metadata for include queries
+    try generateRelationMeta(writer, schema, allocator);
+
+    // Generate include helper methods
+    try generateIncludeHelpers(writer, schema, struct_name, allocator);
+
     // Generate transaction support
     try generateTransactionSupport(writer, struct_name);
 
@@ -270,6 +276,7 @@ fn generateImports(writer: anytype, schema: TableSchema, allocator: std.mem.Allo
         \\const pg = @import("pg");
         \\const BaseModel = @import("base.zig").BaseModel;
         \\const Executor = @import("executor.zig").Executor;
+        \\const includeQuery = @import("includeQuery.zig");
         \\const QueryBuilder = @import("query.zig").QueryBuilder;
         \\const Transaction = @import("transaction.zig").Transaction;
         \\
@@ -1036,6 +1043,140 @@ fn generateTransactionSupport(writer: anytype, struct_name: []const u8) !void {
         \\    //   try tx.commit();
         \\
     );
+}
+
+fn generateRelationMeta(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator) !void {
+    // Count total relations (hasMany + regular relationships that are one_to_many)
+    var relation_count: usize = 0;
+    for (schema.has_many_relationships.items) |_| {
+        relation_count += 1;
+    }
+    for (schema.relationships.items) |rel| {
+        if (rel.relationship_type == .one_to_many or rel.relationship_type == .many_to_one or rel.relationship_type == .one_to_one) {
+            relation_count += 1;
+        }
+    }
+
+    if (relation_count == 0) return;
+
+    try writer.writeAll("\n    // Relationship metadata for include queries\n");
+
+    // Generate RelationMeta constants for hasMany relationships
+    for (schema.has_many_relationships.items) |rel| {
+        const method_name = try hasManyMethodName(allocator, rel.name);
+        defer allocator.free(method_name);
+
+        // Convert to lowercase for field name
+        var lower_name = try allocator.alloc(u8, method_name.len);
+        defer allocator.free(lower_name);
+        for (method_name, 0..) |c, i| {
+            lower_name[i] = std.ascii.toLower(c);
+        }
+
+        try writer.print(
+            \\    pub const rel_{s} = includeQuery.RelationMeta{{
+            \\        .name = "{s}",
+            \\        .table = "{s}",
+            \\        .foreign_key = "{s}",
+            \\        .local_key = "{s}",
+            \\        .relation_type = .has_many,
+            \\    }};
+            \\
+        , .{
+            lower_name,
+            lower_name,
+            rel.foreign_table,
+            rel.foreign_column,
+            rel.local_column,
+        });
+    }
+
+    // Generate RelationMeta constants for regular relationships
+    for (schema.relationships.items) |rel| {
+        const rel_type_str: []const u8 = switch (rel.relationship_type) {
+            .many_to_one => "belongs_to",
+            .one_to_one => "has_one",
+            .one_to_many => "has_many",
+            .many_to_many => continue, // Skip many-to-many for now
+        };
+        _ = rel_type_str;
+
+        // Use column name without _id as the relation name
+        var rel_name = rel.column;
+        if (std.mem.endsWith(u8, rel.column, "_id")) {
+            rel_name = rel.column[0 .. rel.column.len - 3];
+        }
+
+        const rel_type: []const u8 = switch (rel.relationship_type) {
+            .many_to_one => ".belongs_to",
+            .one_to_one => ".has_one",
+            .one_to_many => ".has_many",
+            .many_to_many => continue,
+        };
+
+        try writer.print(
+            \\    pub const rel_{s} = includeQuery.RelationMeta{{
+            \\        .name = "{s}",
+            \\        .table = "{s}",
+            \\        .foreign_key = "{s}",
+            \\        .local_key = "{s}",
+            \\        .relation_type = {s},
+            \\    }};
+            \\
+        , .{
+            rel_name,
+            rel_name,
+            rel.references_table,
+            rel.column,
+            rel.references_column,
+            rel_type,
+        });
+    }
+}
+
+fn generateIncludeHelpers(writer: anytype, schema: TableSchema, struct_name: []const u8, allocator: std.mem.Allocator) !void {
+    // Generate include helper methods for hasMany relationships
+    for (schema.has_many_relationships.items) |rel| {
+        const method_name = try hasManyMethodName(allocator, rel.name);
+        defer allocator.free(method_name);
+
+        const related_struct_name = try toPascalCaseNonSingular(allocator, rel.foreign_table);
+        defer allocator.free(related_struct_name);
+
+        // Convert to lowercase for field reference
+        var lower_name = try allocator.alloc(u8, method_name.len);
+        defer allocator.free(lower_name);
+        for (method_name, 0..) |c, i| {
+            lower_name[i] = std.ascii.toLower(c);
+        }
+
+        try writer.print(
+            \\
+            \\    /// Query {s} with {s} included (eager loading)
+            \\    pub fn include{s}(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation({s}, {s}, "{s}") {{
+            \\        return includeQuery.executeIncludeQuery(
+            \\            {s},
+            \\            {s},
+            \\            rel_{s},
+            \\            db,
+            \\            allocator,
+            \\            where_clause,
+            \\            args,
+            \\        );
+            \\    }}
+            \\
+        , .{
+            struct_name,
+            method_name,
+            method_name,
+            struct_name,
+            related_struct_name,
+            lower_name,
+            struct_name,
+            related_struct_name,
+            lower_name,
+        });
+    }
 }
 
 pub fn generateBarrelFile(allocator: std.mem.Allocator, schemas: []const TableSchema, output_dir: []const u8) !void {

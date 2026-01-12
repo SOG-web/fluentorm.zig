@@ -186,19 +186,25 @@ fn generateRunner(
     try file.writeAll(content);
 }
 
-/// Copy base.zig, query.zig, and transaction.zig to the output directory
+/// Copy base.zig, query.zig, transaction.zig, executor.zig, and includeQuery.zig to the output directory
 fn copyBaseModel(allocator: std.mem.Allocator, output_dir: []const u8) !void {
     const base_dest_path = try std.fmt.allocPrint(allocator, "{s}/base.zig", .{output_dir});
     const query_builder_dest_path = try std.fmt.allocPrint(allocator, "{s}/query.zig", .{output_dir});
     const transaction_dest_path = try std.fmt.allocPrint(allocator, "{s}/transaction.zig", .{output_dir});
+    const executor_dest_path = try std.fmt.allocPrint(allocator, "{s}/executor.zig", .{output_dir});
+    const include_query_dest_path = try std.fmt.allocPrint(allocator, "{s}/includeQuery.zig", .{output_dir});
     defer allocator.free(base_dest_path);
     defer allocator.free(query_builder_dest_path);
     defer allocator.free(transaction_dest_path);
+    defer allocator.free(executor_dest_path);
+    defer allocator.free(include_query_dest_path);
 
     // Embed source files directly into the executable
     const base_content = @embedFile("base.zig");
     const query_content = @embedFile("query.zig");
     const transaction_content = @embedFile("transaction.zig");
+    const executor_content = @embedFile("executor.zig");
+    const include_query_content = @embedFile("includeQuery.zig");
 
     // Ensure output directory exists
     std.fs.cwd().makePath(output_dir) catch |err| {
@@ -221,7 +227,19 @@ fn copyBaseModel(allocator: std.mem.Allocator, output_dir: []const u8) !void {
         .data = transaction_content,
     });
 
+    try std.fs.cwd().writeFile(.{
+        .sub_path = executor_dest_path,
+        .data = executor_content,
+    });
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = include_query_dest_path,
+        .data = include_query_content,
+    });
+
     std.debug.print("📦 Bundled base.zig to {s}\n", .{base_dest_path});
     std.debug.print("📦 Bundled query.zig to {s}\n", .{query_builder_dest_path});
     std.debug.print("📦 Bundled transaction.zig to {s}\n", .{transaction_dest_path});
+    std.debug.print("📦 Bundled executor.zig to {s}\n", .{executor_dest_path});
+    std.debug.print("📦 Bundled includeQuery.zig to {s}\n", .{include_query_dest_path});
 }

@@ -6,6 +6,8 @@
 const std = @import("std");
 const pg = @import("pg");
 const BaseModel = @import("base.zig").BaseModel;
+const Executor = @import("executor.zig").Executor;
+const includeQuery = @import("includeQuery.zig");
 const QueryBuilder = @import("query.zig").QueryBuilder;
 const Transaction = @import("transaction.zig").Transaction;
 
@@ -71,7 +73,7 @@ deleted_at: ?i64,
         return
             \\INSERT INTO posts (
             \\    title, content, user_id, is_published
-            \\) VALUES ($1, $2, $3, COALESCE($4, false))
+            \\) VALUES ($1, $2, $3, COALESCE($4, 'false'))
             \\RETURNING id
         ;
     }
@@ -234,9 +236,38 @@ deleted_at: ?i64,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Posts);
 
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
+    // Relationship metadata for include queries
+    pub const rel_comments = includeQuery.RelationMeta{
+        .name = "comments",
+        .table = "comments",
+        .foreign_key = "post_id",
+        .local_key = "id",
+        .relation_type = .has_many,
+    };
+    pub const rel_user = includeQuery.RelationMeta{
+        .name = "user",
+        .table = "users",
+        .foreign_key = "user_id",
+        .local_key = "id",
+        .relation_type = .belongs_to,
+    };
+
+    /// Query Posts with Comments included (eager loading)
+    pub fn includeComments(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Posts, Comments, "comments") {
+        return includeQuery.executeIncludeQuery(
+            Posts,
+            Comments,
+            rel_comments,
+            db,
+            allocator,
+            where_clause,
+            args,
+        );
     }
+    // Transaction support (use generic Transaction from transaction.zig)
+    // Example:
+    //   var tx = try Transaction.begin(pool);
+    //   defer tx.deinit();
+    //   const id = try @This().insert(tx.executor(), allocator, data);
+    //   try tx.commit();

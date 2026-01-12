@@ -6,6 +6,8 @@
 const std = @import("std");
 const pg = @import("pg");
 const BaseModel = @import("base.zig").BaseModel;
+const Executor = @import("executor.zig").Executor;
+const includeQuery = @import("includeQuery.zig");
 const QueryBuilder = @import("query.zig").QueryBuilder;
 const Transaction = @import("transaction.zig").Transaction;
 
@@ -83,7 +85,7 @@ bio: ?[]const u8,
         return
             \\INSERT INTO users (
             \\    email, name, bid, password_hash, is_active, phone, bio
-            \\) VALUES ($1, $2, $3, $4, COALESCE($5, true), $6, $7)
+            \\) VALUES ($1, $2, $3, $4, COALESCE($5, 'true'), $6, $7)
             \\RETURNING id
         ;
     }
@@ -316,9 +318,51 @@ bio: ?[]const u8,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Users);
 
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
+    // Relationship metadata for include queries
+    pub const rel_posts = includeQuery.RelationMeta{
+        .name = "posts",
+        .table = "posts",
+        .foreign_key = "user_id",
+        .local_key = "id",
+        .relation_type = .has_many,
+    };
+    pub const rel_comments = includeQuery.RelationMeta{
+        .name = "comments",
+        .table = "comments",
+        .foreign_key = "user_id",
+        .local_key = "id",
+        .relation_type = .has_many,
+    };
+
+    /// Query Users with Posts included (eager loading)
+    pub fn includePosts(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Users, Posts, "posts") {
+        return includeQuery.executeIncludeQuery(
+            Users,
+            Posts,
+            rel_posts,
+            db,
+            allocator,
+            where_clause,
+            args,
+        );
     }
+
+    /// Query Users with Comments included (eager loading)
+    pub fn includeComments(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Users, Comments, "comments") {
+        return includeQuery.executeIncludeQuery(
+            Users,
+            Comments,
+            rel_comments,
+            db,
+            allocator,
+            where_clause,
+            args,
+        );
+    }
+    // Transaction support (use generic Transaction from transaction.zig)
+    // Example:
+    //   var tx = try Transaction.begin(pool);
+    //   defer tx.deinit();
+    //   const id = try @This().insert(tx.executor(), allocator, data);
+    //   try tx.commit();

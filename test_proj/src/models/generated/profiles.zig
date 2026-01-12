@@ -6,6 +6,8 @@
 const std = @import("std");
 const pg = @import("pg");
 const BaseModel = @import("base.zig").BaseModel;
+const Executor = @import("executor.zig").Executor;
+const includeQuery = @import("includeQuery.zig");
 const QueryBuilder = @import("query.zig").QueryBuilder;
 const Transaction = @import("transaction.zig").Transaction;
 
@@ -268,9 +270,18 @@ updated_at: i64,
         return Users.findById(db, allocator, self.user_id);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Profiles);
 
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }
+    // Relationship metadata for include queries
+    pub const rel_user = includeQuery.RelationMeta{
+        .name = "user",
+        .table = "users",
+        .foreign_key = "user_id",
+        .local_key = "id",
+        .relation_type = .has_one,
+    };
+    // Transaction support (use generic Transaction from transaction.zig)
+    // Example:
+    //   var tx = try Transaction.begin(pool);
+    //   defer tx.deinit();
+    //   const id = try @This().insert(tx.executor(), allocator, data);
+    //   try tx.commit();
