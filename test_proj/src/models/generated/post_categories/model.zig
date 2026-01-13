@@ -5,30 +5,58 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const Executor = @import("executor.zig").Executor;
-const includeQuery = @import("includeQuery.zig");
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
 
 // Related models
-const Categories = @import("categories.zig");
-const Posts = @import("posts.zig");
+const Categories = @import("../categories/model.zig");
+const Posts = @import("../posts/model.zig");
 
 const PostCategories = @This();
 
 // Fields
-id: []const u8,
-post_id: []const u8,
-category_id: []const u8,
-created_at: i64,
+    id: []const u8,
+    post_id: []const u8,
+    category_id: []const u8,
+    created_at: i64,
+
+    // Relationships (for eager loading)
+    post: ?Posts.PostsPartial = null,
+    category: ?Categories.CategoriesPartial = null,
     pub const FieldEnum = enum {
         id,
         post_id,
         category_id,
         created_at,
     };
+    pub fn toPartial(self: @This()) !PostCategoriesPartial {
+        return PostCategoriesPartial{
+            .id = self.id,
+            .post_id = self.post_id,
+            .category_id = self.category_id,
+            .created_at = self.created_at,
+        };
+    }
 
+    pub const RelationEnum = enum {
+        post,
+        category,
+    };
+
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .post => .{ .name = "post", .type = .belongsTo, .foreign_table = "posts", .foreign_key = "id", .local_key = "post_id" },
+            .category => .{ .name = "category", .type = .belongsTo, .foreign_table = "categories", .foreign_key = "id", .local_key = "category_id" },
+        };
+    }
+
+pub const PostCategoriesPartial = struct {
+    id: ?[]const u8 = null,
+    post_id: ?[]const u8 = null,
+    category_id: ?[]const u8 = null,
+    created_at: ?i64 = null,
+};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -123,9 +151,7 @@ created_at: i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(PostCategories, UpdateInput, FieldEnum) {
-        return QueryBuilder(PostCategories, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init();
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -174,25 +200,3 @@ created_at: i64,
         return Categories.findById(db, allocator, self.category_id);
     }
 
-
-    // Relationship metadata for include queries
-    pub const rel_post = includeQuery.RelationMeta{
-        .name = "post",
-        .table = "posts",
-        .foreign_key = "post_id",
-        .local_key = "id",
-        .relation_type = .belongs_to,
-    };
-    pub const rel_category = includeQuery.RelationMeta{
-        .name = "category",
-        .table = "categories",
-        .foreign_key = "category_id",
-        .local_key = "id",
-        .relation_type = .belongs_to,
-    };
-    // Transaction support (use generic Transaction from transaction.zig)
-    // Example:
-    //   var tx = try Transaction.begin(pool);
-    //   defer tx.deinit();
-    //   const id = try @This().insert(tx.executor(), allocator, data);
-    //   try tx.commit();

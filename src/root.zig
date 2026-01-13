@@ -4,7 +4,6 @@ pub const diff = @import("diff.zig");
 pub const Executor = @import("executor.zig").Executor;
 pub const Field = @import("schema.zig").Field;
 pub const FieldType = @import("schema.zig").FieldType;
-pub const includeQuery = @import("includeQuery.zig");
 pub const Index = @import("schema.zig").Index;
 pub const InputMode = @import("schema.zig").InputMode;
 pub const migration_runner = @import("migration_runner.zig");

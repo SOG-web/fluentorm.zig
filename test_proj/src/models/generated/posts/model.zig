@@ -5,28 +5,30 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const Executor = @import("executor.zig").Executor;
-const includeQuery = @import("includeQuery.zig");
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
 
 // Related models
-const Users = @import("users.zig");
-const Comments = @import("comments.zig");
+const Users = @import("../users/model.zig");
+const Comments = @import("../comments/model.zig");
 
 const Posts = @This();
 
 // Fields
-id: []const u8,
-title: []const u8,
-content: []const u8,
-user_id: []const u8,
-is_published: bool,
-view_count: i32,
-created_at: i64,
-updated_at: i64,
-deleted_at: ?i64,
+    id: []const u8,
+    title: []const u8,
+    content: []const u8,
+    user_id: []const u8,
+    is_published: bool,
+    view_count: i32,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+
+    // Relationships (for eager loading)
+    user: ?Users.UsersPartial = null,
+    comments: ?[]const Comments.CommentsPartial = null,
     pub const FieldEnum = enum {
         id,
         title,
@@ -38,7 +40,43 @@ deleted_at: ?i64,
         updated_at,
         deleted_at,
     };
+    pub fn toPartial(self: @This()) !PostsPartial {
+        return PostsPartial{
+            .id = self.id,
+            .title = self.title,
+            .content = self.content,
+            .user_id = self.user_id,
+            .is_published = self.is_published,
+            .view_count = self.view_count,
+            .created_at = self.created_at,
+            .updated_at = self.updated_at,
+            .deleted_at = self.deleted_at,
+        };
+    }
 
+    pub const RelationEnum = enum {
+        user,
+        comments,
+    };
+
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = "users", .foreign_key = "id", .local_key = "user_id" },
+            .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = "comments", .foreign_key = "post_id", .local_key = "id" },
+        };
+    }
+
+pub const PostsPartial = struct {
+    id: ?[]const u8 = null,
+    title: ?[]const u8 = null,
+    content: ?[]const u8 = null,
+    user_id: ?[]const u8 = null,
+    is_published: ?bool = null,
+    view_count: ?i32 = null,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+    deleted_at: ?i64 = null,
+};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -153,9 +191,7 @@ deleted_at: ?i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Posts, UpdateInput, FieldEnum) {
-        return QueryBuilder(Posts, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init();
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -236,38 +272,3 @@ deleted_at: ?i64,
         return try list.toOwnedSlice(allocator);
     }
 
-
-    // Relationship metadata for include queries
-    pub const rel_comments = includeQuery.RelationMeta{
-        .name = "comments",
-        .table = "comments",
-        .foreign_key = "post_id",
-        .local_key = "id",
-        .relation_type = .has_many,
-    };
-    pub const rel_user = includeQuery.RelationMeta{
-        .name = "user",
-        .table = "users",
-        .foreign_key = "user_id",
-        .local_key = "id",
-        .relation_type = .belongs_to,
-    };
-
-    /// Query Posts with Comments included (eager loading)
-    pub fn includeComments(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Posts, Comments, "comments") {
-        return includeQuery.executeIncludeQuery(
-            Posts,
-            Comments,
-            rel_comments,
-            db,
-            allocator,
-            where_clause,
-            args,
-        );
-    }
-    // Transaction support (use generic Transaction from transaction.zig)
-    // Example:
-    //   var tx = try Transaction.begin(pool);
-    //   defer tx.deinit();
-    //   const id = try @This().insert(tx.executor(), allocator, data);
-    //   try tx.commit();

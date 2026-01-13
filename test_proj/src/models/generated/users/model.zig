@@ -5,30 +5,32 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const Executor = @import("executor.zig").Executor;
-const includeQuery = @import("includeQuery.zig");
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
 
 // Related models
-const Comments = @import("comments.zig");
-const Posts = @import("posts.zig");
+const Comments = @import("../comments/model.zig");
+const Posts = @import("../posts/model.zig");
 
 const Users = @This();
 
 // Fields
-id: []const u8,
-email: []const u8,
-name: []const u8,
-bid: ?[]const u8,
-password_hash: []const u8,
-is_active: bool,
-created_at: i64,
-updated_at: i64,
-deleted_at: ?i64,
-phone: ?[]const u8,
-bio: ?[]const u8,
+    id: []const u8,
+    email: []const u8,
+    name: []const u8,
+    bid: ?[]const u8,
+    password_hash: []const u8,
+    is_active: bool,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+    phone: ?[]const u8,
+    bio: ?[]const u8,
+
+    // Relationships (for eager loading)
+    posts: ?[]const Posts.PostsPartial = null,
+    comments: ?[]const Comments.CommentsPartial = null,
     pub const FieldEnum = enum {
         id,
         email,
@@ -42,7 +44,47 @@ bio: ?[]const u8,
         phone,
         bio,
     };
+    pub fn toPartial(self: @This()) !UsersPartial {
+        return UsersPartial{
+            .id = self.id,
+            .email = self.email,
+            .name = self.name,
+            .bid = self.bid,
+            .password_hash = self.password_hash,
+            .is_active = self.is_active,
+            .created_at = self.created_at,
+            .updated_at = self.updated_at,
+            .deleted_at = self.deleted_at,
+            .phone = self.phone,
+            .bio = self.bio,
+        };
+    }
 
+    pub const RelationEnum = enum {
+        posts,
+        comments,
+    };
+
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = "posts", .foreign_key = "user_id", .local_key = "id" },
+            .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = "comments", .foreign_key = "user_id", .local_key = "id" },
+        };
+    }
+
+pub const UsersPartial = struct {
+    id: ?[]const u8 = null,
+    email: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    bid: ?[]const u8 = null,
+    password_hash: ?[]const u8 = null,
+    is_active: ?bool = null,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+    deleted_at: ?i64 = null,
+    phone: ?[]const u8 = null,
+    bio: ?[]const u8 = null,
+};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -217,9 +259,7 @@ bio: ?[]const u8,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Users, UpdateInput, FieldEnum) {
-        return QueryBuilder(Users, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init();
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -318,51 +358,3 @@ bio: ?[]const u8,
         return try list.toOwnedSlice(allocator);
     }
 
-
-    // Relationship metadata for include queries
-    pub const rel_posts = includeQuery.RelationMeta{
-        .name = "posts",
-        .table = "posts",
-        .foreign_key = "user_id",
-        .local_key = "id",
-        .relation_type = .has_many,
-    };
-    pub const rel_comments = includeQuery.RelationMeta{
-        .name = "comments",
-        .table = "comments",
-        .foreign_key = "user_id",
-        .local_key = "id",
-        .relation_type = .has_many,
-    };
-
-    /// Query Users with Posts included (eager loading)
-    pub fn includePosts(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Users, Posts, "posts") {
-        return includeQuery.executeIncludeQuery(
-            Users,
-            Posts,
-            rel_posts,
-            db,
-            allocator,
-            where_clause,
-            args,
-        );
-    }
-
-    /// Query Users with Comments included (eager loading)
-    pub fn includeComments(db: Executor, allocator: std.mem.Allocator, where_clause: ?[]const u8, args: anytype) ![]includeQuery.WithRelation(Users, Comments, "comments") {
-        return includeQuery.executeIncludeQuery(
-            Users,
-            Comments,
-            rel_comments,
-            db,
-            allocator,
-            where_clause,
-            args,
-        );
-    }
-    // Transaction support (use generic Transaction from transaction.zig)
-    // Example:
-    //   var tx = try Transaction.begin(pool);
-    //   defer tx.deinit();
-    //   const id = try @This().insert(tx.executor(), allocator, data);
-    //   try tx.commit();

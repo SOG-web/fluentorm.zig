@@ -5,6 +5,14 @@ const pg = @import("pg");
 const Executor = @import("executor.zig").Executor;
 const QueryBuilder = @import("query.zig").QueryBuilder;
 
+pub const Relationship = struct {
+    name: []const u8,
+    type: enum { hasOne, hasMany, belongsTo },
+    foreign_table: []const u8,
+    foreign_key: []const u8,
+    local_key: []const u8,
+};
+
 /// Base Model provides common database operations for any model type
 /// Note: This is used internally by generated models.
 /// For custom extensions, create wrapper structs (see docs/EXTENDING_MODELS.md)

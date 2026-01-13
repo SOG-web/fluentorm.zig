@@ -7,9 +7,9 @@ const snapshot = fluentorm.snapshot;
 const diff = fluentorm.diff;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     // Use merged schemas - multiple schema files with same table_name are combined
     const schemas = try registry.getAllSchemas(allocator);
@@ -85,6 +85,6 @@ pub fn main() !void {
         try model_generator.generateModel(allocator, schema_item, schema_file, output_dir);
     }
 
-    try model_generator.generateBarrelFile(allocator, schemas, output_dir);
+    try model_generator.generateRegistryFile(allocator, schemas, output_dir);
     std.debug.print("Models generated in {s}\n", .{output_dir});
 }
