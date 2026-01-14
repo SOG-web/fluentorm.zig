@@ -412,10 +412,12 @@ fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) ![]const u8 {
         .{ base_table, relation.local_key, alias, relation.foreign_key },
     );
 
+    // Use LEFT JOIN to ensure we don't filter out comments that have no related record
+    // (e.g. optional relations or soft-deleted parents)
     return try std.fmt.allocPrint(
         allocator,
         "{s} ({s}) AS {s} ON {s}",
-        .{ JoinType.inner.toSql(), derived.items, alias, on_clause },
+        .{ JoinType.left.toSql(), derived.items, alias, on_clause },
     );
 }
 
@@ -433,42 +435,46 @@ fn buildIncludeWhere(allocator: std.mem.Allocator, table: []const u8, clause: an
     return "";
 }
 
-fn hydrateIncludes(allocator: std.mem.Allocator, row: pg.Row, item: *Model, includes: []const IncludeClauseInput) !void {
+fn hydrateIncludes(_: std.mem.Allocator, row: pg.Row, item: *Model, includes: []const IncludeClauseInput) !void {
     for (includes) |rel| {
         switch (rel) {
             .post => |cfg| {
                 var partial = Posts.PostsPartial{};
                 var any_set = false;
+
+                // check if the join key is null to bail out early (optional relation)
+                if (row.getCol(?[]const u8, "post__id") == null) {
+                    continue;
+                }
+
                 for (cfg.select) |field| {
-                    const col_name = try std.fmt.allocPrint(allocator, "post__{s}", .{@tagName(field)});
-                    defer allocator.free(col_name);
                     switch (field) {
                         .id => {
-                            partial.id = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.id = row.getCol(?[]const u8, "post__id") orelse null;
                         },
                         .title => {
-                            partial.title = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.title = row.getCol(?[]const u8, "post__title") orelse null;
                         },
                         .content => {
-                            partial.content = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.content = row.getCol(?[]const u8, "post__content") orelse null;
                         },
                         .user_id => {
-                            partial.user_id = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.user_id = row.getCol(?[]const u8, "post__user_id") orelse null;
                         },
                         .is_published => {
-                            partial.is_published = row.getCol(?bool, col_name) orelse null;
+                            partial.is_published = row.getCol(?bool, "post__is_published") orelse null;
                         },
                         .view_count => {
-                            partial.view_count = row.getCol(?i32, col_name) orelse null;
+                            partial.view_count = row.getCol(?i32, "post__view_count") orelse null;
                         },
                         .created_at => {
-                            partial.created_at = row.getCol(?i64, col_name) orelse null;
+                            partial.created_at = row.getCol(?i64, "post__created_at") orelse null;
                         },
                         .updated_at => {
-                            partial.updated_at = row.getCol(?i64, col_name) orelse null;
+                            partial.updated_at = row.getCol(?i64, "post__updated_at") orelse null;
                         },
                         .deleted_at => {
-                            partial.deleted_at = row.getCol(?i64, col_name) orelse null;
+                            partial.deleted_at = row.getCol(?i64, "post__deleted_at") orelse null;
                         },
                     }
                     any_set = true;
@@ -478,42 +484,46 @@ fn hydrateIncludes(allocator: std.mem.Allocator, row: pg.Row, item: *Model, incl
             .user => |cfg| {
                 var partial = Users.UsersPartial{};
                 var any_set = false;
+
+                // check if the join key is null to bail out early (optional relation)
+                if (row.getCol(?[]const u8, "user__id") == null) {
+                    continue;
+                }
+
                 for (cfg.select) |field| {
-                    const col_name = try std.fmt.allocPrint(allocator, "user__{s}", .{@tagName(field)});
-                    defer allocator.free(col_name);
                     switch (field) {
                         .id => {
-                            partial.id = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.id = row.getCol(?[]const u8, "user__id") orelse null;
                         },
                         .email => {
-                            partial.email = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.email = row.getCol(?[]const u8, "user__email") orelse null;
                         },
                         .name => {
-                            partial.name = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.name = row.getCol(?[]const u8, "user__name") orelse null;
                         },
                         .bid => {
-                            partial.bid = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.bid = row.getCol(?[]const u8, "user__bid") orelse null;
                         },
                         .password_hash => {
-                            partial.password_hash = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.password_hash = row.getCol(?[]const u8, "user__password_hash") orelse null;
                         },
                         .is_active => {
-                            partial.is_active = row.getCol(?bool, col_name) orelse null;
+                            partial.is_active = row.getCol(?bool, "user__is_active") orelse null;
                         },
                         .created_at => {
-                            partial.created_at = row.getCol(?i64, col_name) orelse null;
+                            partial.created_at = row.getCol(?i64, "user__created_at") orelse null;
                         },
                         .updated_at => {
-                            partial.updated_at = row.getCol(?i64, col_name) orelse null;
+                            partial.updated_at = row.getCol(?i64, "user__updated_at") orelse null;
                         },
                         .deleted_at => {
-                            partial.deleted_at = row.getCol(?i64, col_name) orelse null;
+                            partial.deleted_at = row.getCol(?i64, "user__deleted_at") orelse null;
                         },
                         .phone => {
-                            partial.phone = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.phone = row.getCol(?[]const u8, "user__phone") orelse null;
                         },
                         .bio => {
-                            partial.bio = row.getCol(?[]const u8, col_name) orelse null;
+                            partial.bio = row.getCol(?[]const u8, "user__bio") orelse null;
                         },
                     }
                     any_set = true;

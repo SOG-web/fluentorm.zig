@@ -2,6 +2,8 @@ const std = @import("std");
 
 const TableSchema = @import("../table.zig").TableSchema;
 const utils = @import("utils.zig");
+const HasManyRelationship = @import("../schema.zig").HasManyRelationship;
+const Relationship = @import("../schema.zig").Relationship;
 
 pub fn generateHeader(writer: anytype, schema_file: []const u8) !void {
     try writer.print(
@@ -104,7 +106,10 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\ offset_val: ?u64 = null,
         \\ include_deleted: bool = false,
         \\ distinct_enabled: bool = false,
-        \\ includes_clauses: std.ArrayList(RelationEnum),
+        \\ includes_clauses: std.ArrayList(Model.IncludeClauseInput),
+        \\ base_select_custom: bool = false,
+        \\ select_raw: bool = false,
+        \\ fill_base_select: bool = false,
         \\
     );
 
@@ -149,7 +154,10 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\       .group_clauses = std.ArrayList([]const u8){},
         \\       .having_clauses = std.ArrayList([]const u8){},
         \\       .join_clauses = std.ArrayList([]const u8){},
-        \\       .includes_clauses = std.ArrayList(RelationEnum){},
+        \\       .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
+        \\       .base_select_custom = false,
+        \\       .select_raw = false,
+        \\       .fill_base_select = false,
         \\    };
         \\ }
         \\
@@ -176,6 +184,9 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\    self.offset_val = null;
         \\    self.include_deleted = false;
         \\    self.distinct_enabled = false;
+        \\    self.base_select_custom = false;
+        \\    self.select_raw = false;
+        \\    self.fill_base_select = false;
         \\ }
     );
 

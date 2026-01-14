@@ -22,3 +22,40 @@ pub const Client = struct {
     pub const Comments = @import("comments/model.zig");
 };
 
+pub const Tables = enum {
+    users,
+    posts,
+    profiles,
+    categories,
+    post_categories,
+    comments,
+};
+
+pub const TableFields = struct {
+    users: Users.FieldEnum,
+    posts: Posts.FieldEnum,
+    profiles: Profiles.FieldEnum,
+    categories: Categories.FieldEnum,
+    post_categories: PostCategories.FieldEnum,
+    comments: Comments.FieldEnum,
+};
+
+pub const TableFieldsUnion = union(Tables) {
+    users: Users.FieldEnum,
+    posts: Posts.FieldEnum,
+    profiles: Profiles.FieldEnum,
+    categories: Categories.FieldEnum,
+    post_categories: PostCategories.FieldEnum,
+    comments: Comments.FieldEnum,
+
+    pub fn toString(self: @This()) []const u8 {
+        return switch (self) {
+            .users => |f| @tagName(f),
+            .posts => |f| @tagName(f),
+            .profiles => |f| @tagName(f),
+            .categories => |f| @tagName(f),
+            .post_categories => |f| @tagName(f),
+            .comments => |f| @tagName(f),
+        };
+    }
+};

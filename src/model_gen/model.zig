@@ -193,6 +193,33 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
 
     try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub const IncludeClauseInput = union(RelationEnum) {\n");
+
+    for (schema.relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
+        const field_name = try utils.relationshipToFieldName(allocator, rel);
+        defer allocator.free(field_name);
+        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        defer allocator.free(type_name);
+
+        try writer.print("        {s}: {s}.IncludeClauseInput,\n", .{ field_name, type_name });
+    }
+
+    for (schema.has_many_relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
+        const field_name = try utils.hasManyMethodName(allocator, rel.name);
+        defer allocator.free(field_name);
+        var camel = try allocator.dupe(u8, field_name);
+        defer allocator.free(camel);
+        if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
+
+        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        defer allocator.free(type_name);
+
+        try writer.print("        {s}: {s}.IncludeClauseInput,\n", .{ camel, type_name });
+    }
+    try writer.writeAll("    };\n\n");
 }
 
 pub fn generateDeinit(writer: anytype, fields: []const Field, allocator: std.mem.Allocator) !void {

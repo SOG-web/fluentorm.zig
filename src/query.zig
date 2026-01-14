@@ -4,6 +4,25 @@ const pg = @import("pg");
 
 const Executor = @import("executor.zig").Executor;
 
+const Tables = @import("registry.zig").Tables;
+const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
+
+pub const JoinClause = struct {
+    base_field: TableFieldsUnion,
+    join_field: TableFieldsUnion,
+    join_operator: Operator,
+    join_type: JoinType = .left,
+    join_table: Tables,
+};
+
+const jc_exp = JoinClause{
+    .base_field = .{ .users = .id },
+    .join_type = .inner,
+    .join_table = .posts,
+    .join_field = .{ .posts = .user_id },
+    .join_operator = .eq,
+};
+
 pub const Operator = enum {
     eq,
     neq,
@@ -403,29 +422,25 @@ pub fn whereSubquery(self: anytype, field: anytype, operator: Operator, subquery
     }) catch return;
 }
 
-pub fn join(self: anytype, join_type: JoinType, table: []const u8, on_clause: []const u8) void {
+// SELECT Customers.CustomerName, Orders.OrderDate
+// FROM Customers
+// LEFT JOIN Orders ON Customers.CustomerID = Orders.CustomerID;
+
+pub fn join(self: anytype, join_clause: JoinClause) void {
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} {s} ON {s}",
-        .{ join_type.toSql(), table, on_clause },
+        "{s} {s} ON {s}.{s} {s} {s}.{s}",
+        .{
+            join_clause.join_type.toSql(),
+            @tagName(join_clause.join_table),
+            @tagName(join_clause.join_field),
+            join_clause.join_field.toString(),
+            join_clause.join_operator.toSql(),
+            @tagName(join_clause.base_field),
+            join_clause.base_field.toString(),
+        },
     ) catch return;
     self.join_clauses.append(self.arena.allocator(), sql) catch return;
-}
-
-pub fn innerJoin(self: anytype, table: []const u8, on_clause: []const u8) void {
-    self.join(.inner, table, on_clause);
-}
-
-pub fn leftJoin(self: anytype, table: []const u8, on_clause: []const u8) void {
-    self.join(.left, table, on_clause);
-}
-
-pub fn rightJoin(self: anytype, table: []const u8, on_clause: []const u8) void {
-    self.join(.right, table, on_clause);
-}
-
-pub fn fullJoin(self: anytype, table: []const u8, on_clause: []const u8) void {
-    self.join(.full, table, on_clause);
 }
 
 pub fn groupBy(self: anytype, fields: anytype) void {
