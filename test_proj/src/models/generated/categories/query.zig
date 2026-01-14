@@ -26,55 +26,54 @@ const PostCategories = @import("../post_categories/model.zig");
 const Self = @This();
 
 // Fields
- arena: std.heap.ArenaAllocator,
- select_clauses: std.ArrayList([]const u8),
- where_clauses: std.ArrayList(WhereClauseInternal),
- order_clauses: std.ArrayList([]const u8),
- group_clauses: std.ArrayList([]const u8),
- having_clauses: std.ArrayList([]const u8),
- join_clauses: std.ArrayList([]const u8),
- limit_val: ?u64 = null,
- offset_val: ?u64 = null,
- include_deleted: bool = false,
- distinct_enabled: bool = false,
- includes_clauses: std.ArrayList(RelationEnum),
+arena: std.heap.ArenaAllocator,
+select_clauses: std.ArrayList([]const u8),
+where_clauses: std.ArrayList(WhereClauseInternal),
+order_clauses: std.ArrayList([]const u8),
+group_clauses: std.ArrayList([]const u8),
+having_clauses: std.ArrayList([]const u8),
+join_clauses: std.ArrayList([]const u8),
+limit_val: ?u64 = null,
+offset_val: ?u64 = null,
+include_deleted: bool = false,
+distinct_enabled: bool = false,
+includes_clauses: std.ArrayList(RelationEnum),
 
-  pub const WhereClause = struct {
-      field: FieldEnum,
-      operator: Operator,
-      value: ?[]const u8 = null,
-   };
+pub const WhereClause = struct {
+    field: FieldEnum,
+    operator: Operator,
+    value: ?[]const u8 = null,
+};
 
-
- pub const OrderByClause = struct {
-      field: FieldEnum,
-      direction: enum {
-         asc,
-         desc,
-      },
-     pub fn toSql(self: OrderByClause) []const u8 {
-         return switch (self.direction) {
+pub const OrderByClause = struct {
+    field: FieldEnum,
+    direction: enum {
+        asc,
+        desc,
+    },
+    pub fn toSql(self: OrderByClause) []const u8 {
+        return switch (self.direction) {
             .asc => "ASC",
             .desc => "DESC",
-         };
-      }
-   };
+        };
+    }
+};
 
-   pub const SelectField = []const FieldEnum;
- pub fn init() Self {
+pub const SelectField = []const FieldEnum;
+pub fn init() Self {
     return Self{
-       .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
-       .select_clauses = std.ArrayList([]const u8){},
-       .where_clauses = std.ArrayList(WhereClauseInternal){},
-       .order_clauses = std.ArrayList([]const u8){},
-       .group_clauses = std.ArrayList([]const u8){},
-       .having_clauses = std.ArrayList([]const u8){},
-       .join_clauses = std.ArrayList([]const u8){},
-       .includes_clauses = std.ArrayList(RelationEnum){},
+        .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
+        .select_clauses = std.ArrayList([]const u8){},
+        .where_clauses = std.ArrayList(WhereClauseInternal){},
+        .order_clauses = std.ArrayList([]const u8){},
+        .group_clauses = std.ArrayList([]const u8){},
+        .having_clauses = std.ArrayList([]const u8){},
+        .join_clauses = std.ArrayList([]const u8){},
+        .includes_clauses = std.ArrayList(RelationEnum){},
     };
- }
+}
 
- pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self) void {
     self.where_clauses.deinit(self.arena.allocator());
     self.select_clauses.deinit(self.arena.allocator());
     self.order_clauses.deinit(self.arena.allocator());
@@ -83,9 +82,9 @@ const Self = @This();
     self.join_clauses.deinit(self.arena.allocator());
     self.includes_clauses.deinit(self.arena.allocator());
     self.arena.deinit();
- }
+}
 
- pub fn reset(self: *Self) void {
+pub fn reset(self: *Self) void {
     self.select_clauses.clearAndFree(self.arena.allocator());
     self.where_clauses.clearAndFree(self.arena.allocator());
     self.order_clauses.clearAndFree(self.arena.allocator());
@@ -97,7 +96,7 @@ const Self = @This();
     self.offset_val = null;
     self.include_deleted = false;
     self.distinct_enabled = false;
- }
+}
 /// Add a SELECT clause
 ///
 /// Example:
@@ -594,7 +593,7 @@ fn hasCustomProjection(self: *Self) bool {
 pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]Model {
     // Guard: reject queries with custom projections that can't map to K
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionRequiresFieldEnumtchAs;
+        return error.CustomProjectionRequiresFetchAs;
     }
 
     const temp_allocator = self.arena.allocator();
@@ -661,7 +660,7 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) !?Model {
     // Guard: reject queries with custom projections that can't map to K
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionRequiresFieldEnumtchAs;
+        return error.CustomProjectionRequiresFetchAs;
     }
 
     self.limit_val = 1;

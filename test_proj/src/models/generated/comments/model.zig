@@ -4,70 +4,94 @@
 // To regenerate: zig run scripts/generate_model.zig -- comments.zig
 
 const std = @import("std");
+
 const pg = @import("pg");
+
 const BaseModel = @import("../base.zig").BaseModel;
-const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
+const Posts = @import("../posts/model.zig");
+const PostsQuery = @import("../posts/query.zig");
+const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
+const Query = @import("query.zig");
 
 // Related models
-const Users = @import("../users/model.zig");
-const Posts = @import("../posts/model.zig");
-
 const Comments = @This();
 
 // Fields
-    id: []const u8,
-    post_id: []const u8,
-    user_id: []const u8,
-    parent_id: ?[]const u8,
-    content: []const u8,
-    is_approved: bool,
-    like_count: i32,
-    created_at: i64,
-    updated_at: i64,
-    deleted_at: ?i64,
+id: []const u8,
+post_id: []const u8,
+user_id: []const u8,
+parent_id: ?[]const u8,
+content: []const u8,
+is_approved: bool,
+like_count: i32,
+created_at: i64,
+updated_at: i64,
+deleted_at: ?i64,
 
-    // Relationships (for eager loading)
-    post: ?Posts.PostsPartial = null,
-    user: ?Users.UsersPartial = null,
-    pub const FieldEnum = enum {
-        id,
-        post_id,
-        user_id,
-        parent_id,
-        content,
-        is_approved,
-        like_count,
-        created_at,
-        updated_at,
-        deleted_at,
+// Relationships (for eager loading)
+post: ?Posts.PostsPartial = null,
+user: ?Users.UsersPartial = null,
+pub const FieldEnum = enum {
+    id,
+    post_id,
+    user_id,
+    parent_id,
+    content,
+    is_approved,
+    like_count,
+    created_at,
+    updated_at,
+    deleted_at,
+};
+pub fn toPartial(self: @This()) !CommentsPartial {
+    return CommentsPartial{
+        .id = self.id,
+        .post_id = self.post_id,
+        .user_id = self.user_id,
+        .parent_id = self.parent_id,
+        .content = self.content,
+        .is_approved = self.is_approved,
+        .like_count = self.like_count,
+        .created_at = self.created_at,
+        .updated_at = self.updated_at,
+        .deleted_at = self.deleted_at,
     };
-    pub fn toPartial(self: @This()) !CommentsPartial {
-        return CommentsPartial{
-            .id = self.id,
-            .post_id = self.post_id,
-            .user_id = self.user_id,
-            .parent_id = self.parent_id,
-            .content = self.content,
-            .is_approved = self.is_approved,
-            .like_count = self.like_count,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-        };
-    }
+}
 
-    pub const RelationEnum = enum {
-        post,
-        user,
+pub const RelationEnum = enum {
+    post,
+    user,
+};
+
+pub fn getRelation(rel: RelationEnum) Relationship {
+    return switch (rel) {
+        .post => .{ .name = "post", .type = .belongsTo, .foreign_table = "posts", .foreign_key = "id", .local_key = "post_id" },
+        .user => .{ .name = "user", .type = .belongsTo, .foreign_table = "users", .foreign_key = "id", .local_key = "user_id" },
     };
+}
 
-    pub fn getRelation(rel: RelationEnum) Relationship {
-        return switch (rel) {
-            .post => .{ .name = "post", .type = .belongsTo, .foreign_table = "posts", .foreign_key = "id", .local_key = "post_id" },
-            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = "users", .foreign_key = "id", .local_key = "user_id" },
-        };
-    }
+pub const PostsIncludeClauseInput = struct {
+    model_name: RelationEnum,
+    select: []const Posts.FieldEnum,
+    where: []const PostsQuery.WhereClause,
+    include_deleted: bool = false,
+    distinct_enabled: bool = false,
+};
+
+pub const UsersIncludeClauseInput = struct {
+    model_name: RelationEnum,
+    select: []const Users.FieldEnum,
+    where: []const UsersQuery.WhereClause,
+    include_deleted: bool = false,
+    distinct_enabled: bool = false,
+};
+
+pub const IncludeClauseInput = union(RelationEnum) {
+    post: PostsIncludeClauseInput,
+    user: UsersIncludeClauseInput,
+};
 
 pub const CommentsPartial = struct {
     id: ?[]const u8 = null,
@@ -80,224 +104,225 @@ pub const CommentsPartial = struct {
     created_at: ?i64 = null,
     updated_at: ?i64 = null,
     deleted_at: ?i64 = null,
+
+    post: ?Posts.PostsPartial = null,
+    user: ?Users.UsersPartial = null,
 };
 
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        allocator.free(self.id);
-        allocator.free(self.post_id);
-        allocator.free(self.user_id);
-        if (self.parent_id) |v| allocator.free(v);
-        allocator.free(self.content);
-    }
+pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+    allocator.free(self.id);
+    allocator.free(self.post_id);
+    allocator.free(self.user_id);
+    if (self.parent_id) |v| allocator.free(v);
+    allocator.free(self.content);
+}
 
-    // Input type for creating new records
-    pub const CreateInput = struct {
-        post_id: []const u8,
-        user_id: []const u8,
-        parent_id: ?[]const u8 = null,
-        content: []const u8,
-        is_approved: ?bool = null,
+// Input type for creating new records
+pub const CreateInput = struct {
+    post_id: []const u8,
+    user_id: []const u8,
+    parent_id: ?[]const u8 = null,
+    content: []const u8,
+    is_approved: ?bool = null,
+};
+
+// Input type for updating existing records
+pub const UpdateInput = struct {
+    post_id: ?[]const u8 = null,
+    user_id: ?[]const u8 = null,
+    parent_id: ?[]const u8 = null,
+    content: ?[]const u8 = null,
+    is_approved: ?bool = null,
+    like_count: ?i32 = null,
+    updated_at: ?i64 = null,
+};
+
+// Model configuration
+pub fn tableName() []const u8 {
+    return "comments";
+}
+
+pub fn insertSQL() []const u8 {
+    return 
+    \\INSERT INTO comments (
+    \\    post_id, user_id, parent_id, content, is_approved
+    \\) VALUES ($1, $2, COALESCE($3, 'gen_random_uuid()'), $4, COALESCE($5, 'true'))
+    \\RETURNING id
+    ;
+}
+
+pub fn insertParams(data: CreateInput) struct {
+    []const u8,
+    []const u8,
+    ?[]const u8,
+    []const u8,
+    ?bool,
+} {
+    return .{
+        data.post_id,
+        data.user_id,
+        data.parent_id,
+        data.content,
+        data.is_approved,
     };
+}
 
-    // Input type for updating existing records
-    pub const UpdateInput = struct {
-        post_id: ?[]const u8 = null,
-        user_id: ?[]const u8 = null,
-        parent_id: ?[]const u8 = null,
-        content: ?[]const u8 = null,
-        is_approved: ?bool = null,
-        like_count: ?i32 = null,
-        updated_at: ?i64 = null,
+pub fn updateSQL() []const u8 {
+    return 
+    \\UPDATE comments SET
+    \\    post_id = COALESCE($2, post_id),
+    \\    user_id = COALESCE($3, user_id),
+    \\    parent_id = COALESCE($4, parent_id),
+    \\    content = COALESCE($5, content),
+    \\    is_approved = COALESCE($6, is_approved),
+    \\    like_count = COALESCE($7, like_count),
+    \\    updated_at = COALESCE($8, updated_at)
+    \\WHERE id = $1
+    ;
+}
+
+pub fn updateParams(id: []const u8, data: UpdateInput) struct {
+    []const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?bool,
+    ?i32,
+    ?i64,
+} {
+    return .{
+        id,
+        data.post_id,
+        data.user_id,
+        data.parent_id,
+        data.content,
+        data.is_approved,
+        data.like_count,
+        data.updated_at,
     };
+}
 
-    // Model configuration
-    pub fn tableName() []const u8 {
-        return "comments";
-    }
+const base = BaseModel(Comments);
+// DDL operations
 
-    pub fn insertSQL() []const u8 {
-        return
-            \\INSERT INTO comments (
-            \\    post_id, user_id, parent_id, content, is_approved
-            \\) VALUES ($1, $2, COALESCE($3, 'gen_random_uuid()'), $4, COALESCE($5, 'true'))
-            \\RETURNING id
-        ;
-    }
+pub const truncate = base.truncate;
 
-    pub fn insertParams(data: CreateInput) struct {
-        []const u8,
-        []const u8,
-        ?[]const u8,
-        []const u8,
-        ?bool,
-    } {
-        return .{
-            data.post_id,
-            data.user_id,
-            data.parent_id,
-            data.content,
-            data.is_approved,
-        };
-    }
+pub const tableExists = base.tableExists;
 
-    pub fn updateSQL() []const u8 {
-        return
-            \\UPDATE comments SET
-            \\    post_id = COALESCE($2, post_id),
-            \\    user_id = COALESCE($3, user_id),
-            \\    parent_id = COALESCE($4, parent_id),
-            \\    content = COALESCE($5, content),
-            \\    is_approved = COALESCE($6, is_approved),
-            \\    like_count = COALESCE($7, like_count),
-            \\    updated_at = COALESCE($8, updated_at)
-            \\WHERE id = $1
-        ;
-    }
+// CRUD operations
+pub const findById = base.findById;
 
-    pub fn updateParams(id: []const u8, data: UpdateInput) struct {
-        []const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?bool,
-        ?i32,
-        ?i64,
-    } {
-        return .{
-            id,
-            data.post_id,
-            data.user_id,
-            data.parent_id,
-            data.content,
-            data.is_approved,
-            data.like_count,
-            data.updated_at,
-        };
-    }
+pub const findAll = base.findAll;
 
-    const base = BaseModel(Comments);
-    // DDL operations
+pub const insert = base.insert;
 
-    pub const truncate = base.truncate;
+pub const insertMany = base.insertMany;
 
-    pub const tableExists = base.tableExists;
+pub const insertAndReturn = base.insertAndReturn;
 
-    // CRUD operations
-    pub const findById = base.findById;
+pub const update = base.update;
 
-    pub const findAll = base.findAll;
+pub const updateAndReturn = base.updateAndReturn;
 
-    pub const insert = base.insert;
+pub const softDelete = base.softDelete;
 
-    pub const insertMany = base.insertMany;
+pub const hardDelete = base.hardDelete;
 
-    pub const insertAndReturn = base.insertAndReturn;
+pub const count = base.count;
 
-    pub const update = base.update;
+pub const fromRow = base.fromRow;
 
-    pub const updateAndReturn = base.updateAndReturn;
+pub const query = Query.init();
 
-    pub const softDelete = base.softDelete;
+/// JSON-safe response struct with UUIDs as hex strings
+pub const JsonResponse = struct {
+    id: [36]u8,
+    post_id: [36]u8,
+    user_id: [36]u8,
+    parent_id: ?[36]u8,
+    content: []const u8,
+    is_approved: bool,
+    like_count: i32,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+};
 
-    pub const hardDelete = base.hardDelete;
-
-    pub const count = base.count;
-
-    pub const fromRow = base.fromRow;
-
-    pub const query = Query.init();
-
-
-    /// JSON-safe response struct with UUIDs as hex strings
-    pub const JsonResponse = struct {
-        id: [36]u8,
-        post_id: [36]u8,
-        user_id: [36]u8,
-        parent_id: ?[36]u8,
-        content: []const u8,
-        is_approved: bool,
-        like_count: i32,
-        created_at: i64,
-        updated_at: i64,
-        deleted_at: ?i64,
+/// Convert model to JSON-safe response with UUIDs as hex strings
+pub fn toJsonResponse(self: Comments) !JsonResponse {
+    return JsonResponse{
+        .id = try pg.uuidToHex(&self.id[0..16].*),
+        .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
+        .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
+        .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
+        .content = self.content,
+        .is_approved = self.is_approved,
+        .like_count = self.like_count,
+        .created_at = self.created_at,
+        .updated_at = self.updated_at,
+        .deleted_at = self.deleted_at,
     };
+}
 
-    /// Convert model to JSON-safe response with UUIDs as hex strings
-    pub fn toJsonResponse(self: Comments) !JsonResponse {
-        return JsonResponse{
-            .id = try pg.uuidToHex(&self.id[0..16].*),
-            .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
-            .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
-            .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
-            .content = self.content,
-            .is_approved = self.is_approved,
-            .like_count = self.like_count,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-        };
-    }
+/// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
+pub const JsonResponseSafe = struct {
+    id: [36]u8,
+    post_id: [36]u8,
+    user_id: [36]u8,
+    parent_id: ?[36]u8,
+    content: []const u8,
+    is_approved: bool,
+    like_count: i32,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+};
 
-    /// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
-    pub const JsonResponseSafe = struct {
-        id: [36]u8,
-        post_id: [36]u8,
-        user_id: [36]u8,
-        parent_id: ?[36]u8,
-        content: []const u8,
-        is_approved: bool,
-        like_count: i32,
-        created_at: i64,
-        updated_at: i64,
-        deleted_at: ?i64,
+/// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
+pub fn toJsonResponseSafe(self: Comments) !JsonResponseSafe {
+    return JsonResponseSafe{
+        .id = try pg.uuidToHex(&self.id[0..16].*),
+        .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
+        .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
+        .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
+        .content = self.content,
+        .is_approved = self.is_approved,
+        .like_count = self.like_count,
+        .created_at = self.created_at,
+        .updated_at = self.updated_at,
+        .deleted_at = self.deleted_at,
     };
+}
+// Relationship methods
+/// Fetch the related Posts record for this Comments
+pub fn fetchPost(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Posts {
+    return Posts.findById(db, allocator, self.post_id);
+}
 
-    /// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
-    pub fn toJsonResponseSafe(self: Comments) !JsonResponseSafe {
-        return JsonResponseSafe{
-            .id = try pg.uuidToHex(&self.id[0..16].*),
-            .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
-            .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
-            .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
-            .content = self.content,
-            .is_approved = self.is_approved,
-            .like_count = self.like_count,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-        };
-    }
-    // Relationship methods
-    /// Fetch the related Posts record for this Comments
-    pub fn fetchPost(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Posts {
-        return Posts.findById(db, allocator, self.post_id);
-    }
+/// Fetch the related Users record for this Comments
+pub fn fetchUser(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Users {
+    return Users.findById(db, allocator, self.user_id);
+}
 
-    /// Fetch the related Users record for this Comments
-    pub fn fetchUser(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Users {
-        return Users.findById(db, allocator, self.user_id);
-    }
+/// Fetch the related Comments record for this Comments
+pub fn fetchParent(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Comments {
+    return Comments.findById(db, allocator, self.parent_id);
+}
 
-    /// Fetch the related Comments record for this Comments
-    pub fn fetchParent(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) !?Comments {
-        return Comments.findById(db, allocator, self.parent_id);
-    }
+/// Fetch all related Comments records for this Comments (one-to-many)
+pub fn fetchReplies(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) ![]Comments {
+    const queryt = "SELECT * FROM comments WHERE parent_id = $1";
+    var result = try db.query(queryt, .{self.id});
+    defer result.deinit();
 
-    /// Fetch all related Comments records for this Comments (one-to-many)
-    pub fn fetchReplies(self: *const Comments, db: *pg.Pool, allocator: std.mem.Allocator) ![]Comments {
-        const queryt = "SELECT * FROM comments WHERE parent_id = $1";
-        var result = try db.query(queryt, .{self.id});
-        defer result.deinit();
+    var list = std.ArrayList(Comments){};
+    errdefer list.deinit(allocator);
 
-        var list = std.ArrayList(Comments){};
-        errdefer list.deinit(allocator);
-
-        while (try result.next()) |row| {
-            const item = try row.to(Comments, .{ .allocator = allocator, .map = .ordinal });
-            try list.append(allocator, item);
-        }
-
-        return try list.toOwnedSlice(allocator);
+    while (try result.next()) |row| {
+        const item = try row.to(Comments, .{ .allocator = allocator, .map = .ordinal });
+        try list.append(allocator, item);
     }
 
+    return try list.toOwnedSlice(allocator);
+}

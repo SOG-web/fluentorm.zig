@@ -494,7 +494,7 @@ fn hasCustomProjection(self: *Self) bool {
 pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]Model {
     // Guard: reject queries with custom projections that can't map to K
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionRequiresFieldEnumtchAs;
+        return error.CustomProjectionRequiresFetchAs;
     }
 
     const temp_allocator = self.arena.allocator();
@@ -561,7 +561,7 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) !?Model {
     // Guard: reject queries with custom projections that can't map to K
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionRequiresFieldEnumtchAs;
+        return error.CustomProjectionRequiresFetchAs;
     }
 
     self.limit_val = 1;
@@ -575,13 +575,6 @@ pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
 
     var mapper = result.mapper(Model, .{ .allocator = allocator });
     if (try mapper.next()) |item| {
-        if (self.includes_clauses.items.len > 0) {
-            var slice = [1]Model{item};
-            for (self.includes_clauses.items) |rel| {
-                try Model.loadRelated(allocator, &slice, rel, db);
-            }
-            return slice[0];
-        }
         return item;
     }
     return null;
