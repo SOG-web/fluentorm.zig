@@ -19,7 +19,239 @@ const PostsQuery = @import("../posts/query.zig");
 const Users = @This();
 
 // Fields
-    id: []const u8,
+id: []const u8,
+email: []const u8,
+name: []const u8,
+bid: ?[]const u8,
+password_hash: []const u8,
+is_active: bool,
+created_at: i64,
+updated_at: i64,
+deleted_at: ?i64,
+phone: ?[]const u8,
+bio: ?[]const u8,
+
+pub const FieldEnum = enum {
+    id,
+    email,
+    name,
+    bid,
+    password_hash,
+    is_active,
+    created_at,
+    updated_at,
+    deleted_at,
+    phone,
+    bio,
+};
+
+pub const RelationEnum = enum {
+    posts,
+    comments,
+};
+
+pub fn getRelation(rel: RelationEnum) Relationship {
+    return switch (rel) {
+        .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = .posts, .foreign_key = .{ .posts = .user_id }, .local_key = .{ .users = .id } },
+        .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = .comments, .foreign_key = .{ .comments = .user_id }, .local_key = .{ .users = .id } },
+    };
+}
+
+pub const PostsIncludeClauseInput = struct {
+    model_name: RelationEnum,
+    select: []const Posts.FieldEnum = &.{},
+    where: []const PostsQuery.WhereClause = &.{},
+};
+
+pub const CommentsIncludeClauseInput = struct {
+    model_name: RelationEnum,
+    select: []const Comments.FieldEnum = &.{},
+    where: []const CommentsQuery.WhereClause = &.{},
+};
+
+pub const IncludeClauseInput = union(RelationEnum) {
+    posts: PostsIncludeClauseInput,
+    comments: CommentsIncludeClauseInput,
+};
+
+pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+    allocator.free(self.id);
+    allocator.free(self.email);
+    allocator.free(self.name);
+    if (self.bid) |v| allocator.free(v);
+    allocator.free(self.password_hash);
+    if (self.phone) |v| allocator.free(v);
+    if (self.bio) |v| allocator.free(v);
+}
+
+// Input type for creating new records
+pub const CreateInput = struct {
+    email: []const u8,
+    name: []const u8,
+    bid: ?[]const u8,
+    password_hash: []const u8,
+    is_active: ?bool = null,
+    phone: ?[]const u8 = null,
+    bio: ?[]const u8 = null,
+};
+
+// Input type for updating existing records
+pub const UpdateInput = struct {
+    email: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    bid: ?[]const u8 = null,
+    password_hash: ?[]const u8 = null,
+    is_active: ?bool = null,
+    phone: ?[]const u8 = null,
+    bio: ?[]const u8 = null,
+};
+
+// Model configuration
+pub fn tableName() []const u8 {
+    return "users";
+}
+
+pub fn insertSQL() []const u8 {
+    return 
+    \\INSERT INTO users (
+    \\    email, name, bid, password_hash, is_active, phone, bio
+    \\) VALUES ($1, $2, $3, $4, COALESCE($5, 'true'), $6, $7)
+    \\RETURNING id
+    ;
+}
+
+pub fn insertParams(data: CreateInput) struct {
+    []const u8,
+    []const u8,
+    ?[]const u8,
+    []const u8,
+    ?bool,
+    ?[]const u8,
+    ?[]const u8,
+} {
+    return .{
+        data.email,
+        data.name,
+        data.bid,
+        data.password_hash,
+        data.is_active,
+        data.phone,
+        data.bio,
+    };
+}
+
+pub fn updateSQL() []const u8 {
+    return 
+    \\UPDATE users SET
+    \\    email = COALESCE($2, email),
+    \\    name = COALESCE($3, name),
+    \\    bid = COALESCE($4, bid),
+    \\    password_hash = COALESCE($5, password_hash),
+    \\    is_active = COALESCE($6, is_active),
+    \\    updated_at =  CURRENT_TIMESTAMP,
+    \\    phone = COALESCE($7, phone),
+    \\    bio = COALESCE($8, bio)
+    \\WHERE id = $1
+    ;
+}
+
+pub fn updateParams(id: []const u8, data: UpdateInput) struct {
+    []const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?[]const u8,
+    ?bool,
+    ?[]const u8,
+    ?[]const u8,
+} {
+    return .{
+        id,
+        data.email,
+        data.name,
+        data.bid,
+        data.password_hash,
+        data.is_active,
+        data.phone,
+        data.bio,
+    };
+}
+
+pub fn upsertSQL() []const u8 {
+    return 
+    \\INSERT INTO users (
+    \\    email, name, bid, password_hash, is_active, phone, bio
+    \\) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    \\ON CONFLICT (email) DO UPDATE SET
+    \\    name = EXCLUDED.name,
+    \\    bid = EXCLUDED.bid,
+    \\    password_hash = EXCLUDED.password_hash,
+    \\    is_active = EXCLUDED.is_active,
+    \\    phone = EXCLUDED.phone,
+    \\    bio = EXCLUDED.bio
+    \\RETURNING id
+    ;
+}
+
+pub fn upsertParams(data: CreateInput) struct {
+    []const u8,
+    []const u8,
+    ?[]const u8,
+    []const u8,
+    ?bool,
+    ?[]const u8,
+    ?[]const u8,
+} {
+    return .{
+        data.email,
+        data.name,
+        data.bid,
+        data.password_hash,
+        data.is_active,
+        data.phone,
+        data.bio,
+    };
+}
+
+const base = BaseModel(Users);
+// DDL operations
+
+pub const truncate = base.truncate;
+
+pub const tableExists = base.tableExists;
+
+// CRUD operations
+pub const findById = base.findById;
+
+pub const findAll = base.findAll;
+
+pub const insert = base.insert;
+
+pub const insertMany = base.insertMany;
+
+pub const insertAndReturn = base.insertAndReturn;
+
+pub const update = base.update;
+
+pub const updateAndReturn = base.updateAndReturn;
+
+pub const upsert = base.upsert;
+
+pub const upsertAndReturn = base.upsertAndReturn;
+
+pub const softDelete = base.softDelete;
+
+pub const hardDelete = base.hardDelete;
+
+pub const count = base.count;
+
+pub const fromRow = base.fromRow;
+
+pub const query = Query.init();
+
+/// JSON-safe response struct with UUIDs as hex strings
+pub const JsonResponse = struct {
+    id: [36]u8,
     email: []const u8,
     name: []const u8,
     bid: ?[]const u8,
@@ -30,351 +262,85 @@ const Users = @This();
     deleted_at: ?i64,
     phone: ?[]const u8,
     bio: ?[]const u8,
-
-    // Relationships (for eager loading)
-    posts: ?[]const Posts.PostsPartial = null,
-    comments: ?[]const Comments.CommentsPartial = null,
-    pub const FieldEnum = enum {
-        id,
-        email,
-        name,
-        bid,
-        password_hash,
-        is_active,
-        created_at,
-        updated_at,
-        deleted_at,
-        phone,
-        bio,
-    };
-    pub fn toPartial(self: @This()) !UsersPartial {
-        return UsersPartial{
-            .id = self.id,
-            .email = self.email,
-            .name = self.name,
-            .bid = self.bid,
-            .password_hash = self.password_hash,
-            .is_active = self.is_active,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-            .phone = self.phone,
-            .bio = self.bio,
-        };
-    }
-
-    pub const RelationEnum = enum {
-        posts,
-        comments,
-    };
-
-    pub fn getRelation(rel: RelationEnum) Relationship {
-        return switch (rel) {
-            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = .posts, .foreign_key = .{ .posts = .user_id }, .local_key = .{ .users = .id } },
-            .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = .comments, .foreign_key = .{ .comments = .user_id }, .local_key = .{ .users = .id } },
-        };
-    }
-
-    pub const PostsIncludeClauseInput = struct {
-        model_name: RelationEnum,
-        select: []const Posts.FieldEnum = &.{},
-        where: []const PostsQuery.WhereClause = &.{},
-    };
-
-    pub const CommentsIncludeClauseInput = struct {
-        model_name: RelationEnum,
-        select: []const Comments.FieldEnum = &.{},
-        where: []const CommentsQuery.WhereClause = &.{},
-    };
-
-    pub const IncludeClauseInput = union(RelationEnum) {
-        posts: PostsIncludeClauseInput,
-        comments: CommentsIncludeClauseInput,
-    };
-
-pub const UsersPartial = struct {
-    id: ?[]const u8 = null,
-    email: ?[]const u8 = null,
-    name: ?[]const u8 = null,
-    bid: ?[]const u8 = null,
-    password_hash: ?[]const u8 = null,
-    is_active: ?bool = null,
-    created_at: ?i64 = null,
-    updated_at: ?i64 = null,
-    deleted_at: ?i64 = null,
-    phone: ?[]const u8 = null,
-    bio: ?[]const u8 = null,
 };
 
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        allocator.free(self.id);
-        allocator.free(self.email);
-        allocator.free(self.name);
-        if (self.bid) |v| allocator.free(v);
-        allocator.free(self.password_hash);
-        if (self.phone) |v| allocator.free(v);
-        if (self.bio) |v| allocator.free(v);
-    }
-
-    // Input type for creating new records
-    pub const CreateInput = struct {
-        email: []const u8,
-        name: []const u8,
-        bid: ?[]const u8,
-        password_hash: []const u8,
-        is_active: ?bool = null,
-        phone: ?[]const u8 = null,
-        bio: ?[]const u8 = null,
+/// Convert model to JSON-safe response with UUIDs as hex strings
+pub fn toJsonResponse(self: Users) !JsonResponse {
+    return JsonResponse{
+        .id = try pg.uuidToHex(&self.id[0..16].*),
+        .email = self.email,
+        .name = self.name,
+        .bid = self.bid,
+        .password_hash = self.password_hash,
+        .is_active = self.is_active,
+        .created_at = self.created_at,
+        .updated_at = self.updated_at,
+        .deleted_at = self.deleted_at,
+        .phone = self.phone,
+        .bio = self.bio,
     };
+}
 
-    // Input type for updating existing records
-    pub const UpdateInput = struct {
-        email: ?[]const u8 = null,
-        name: ?[]const u8 = null,
-        bid: ?[]const u8 = null,
-        password_hash: ?[]const u8 = null,
-        is_active: ?bool = null,
-        phone: ?[]const u8 = null,
-        bio: ?[]const u8 = null,
+/// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
+pub const JsonResponseSafe = struct {
+    id: [36]u8,
+    email: []const u8,
+    name: []const u8,
+    bid: ?[]const u8,
+    is_active: bool,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+    phone: ?[]const u8,
+    bio: ?[]const u8,
+};
+
+/// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
+pub fn toJsonResponseSafe(self: Users) !JsonResponseSafe {
+    return JsonResponseSafe{
+        .id = try pg.uuidToHex(&self.id[0..16].*),
+        .email = self.email,
+        .name = self.name,
+        .bid = self.bid,
+        .is_active = self.is_active,
+        .created_at = self.created_at,
+        .updated_at = self.updated_at,
+        .deleted_at = self.deleted_at,
+        .phone = self.phone,
+        .bio = self.bio,
     };
+}
+// Relationship methods
+/// Fetch all related Posts records for this Users (one-to-many)
+pub fn fetchPosts(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Posts {
+    const queryt = "SELECT * FROM posts WHERE user_id = $1";
+    var result = try db.query(queryt, .{self.id});
+    defer result.deinit();
 
-    // Model configuration
-    pub fn tableName() []const u8 {
-        return "users";
+    var list = std.ArrayList(Posts){};
+    errdefer list.deinit(allocator);
+
+    while (try result.next()) |row| {
+        const item = try row.to(Posts, .{ .allocator = allocator, .map = .ordinal });
+        try list.append(allocator, item);
     }
 
-    pub fn insertSQL() []const u8 {
-        return
-            \\INSERT INTO users (
-            \\    email, name, bid, password_hash, is_active, phone, bio
-            \\) VALUES ($1, $2, $3, $4, COALESCE($5, 'true'), $6, $7)
-            \\RETURNING id
-        ;
+    return try list.toOwnedSlice(allocator);
+}
+
+/// Fetch all related Comments records for this Users (one-to-many)
+pub fn fetchComments(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Comments {
+    const queryt = "SELECT * FROM comments WHERE user_id = $1";
+    var result = try db.query(queryt, .{self.id});
+    defer result.deinit();
+
+    var list = std.ArrayList(Comments){};
+    errdefer list.deinit(allocator);
+
+    while (try result.next()) |row| {
+        const item = try row.to(Comments, .{ .allocator = allocator, .map = .ordinal });
+        try list.append(allocator, item);
     }
 
-    pub fn insertParams(data: CreateInput) struct {
-        []const u8,
-        []const u8,
-        ?[]const u8,
-        []const u8,
-        ?bool,
-        ?[]const u8,
-        ?[]const u8,
-    } {
-        return .{
-            data.email,
-            data.name,
-            data.bid,
-            data.password_hash,
-            data.is_active,
-            data.phone,
-            data.bio,
-        };
-    }
-
-    pub fn updateSQL() []const u8 {
-        return
-            \\UPDATE users SET
-            \\    email = COALESCE($2, email),
-            \\    name = COALESCE($3, name),
-            \\    bid = COALESCE($4, bid),
-            \\    password_hash = COALESCE($5, password_hash),
-            \\    is_active = COALESCE($6, is_active),
-            \\    updated_at =  CURRENT_TIMESTAMP,
-            \\    phone = COALESCE($7, phone),
-            \\    bio = COALESCE($8, bio)
-            \\WHERE id = $1
-        ;
-    }
-
-    pub fn updateParams(id: []const u8, data: UpdateInput) struct {
-        []const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?[]const u8,
-        ?bool,
-        ?[]const u8,
-        ?[]const u8,
-    } {
-        return .{
-            id,
-            data.email,
-            data.name,
-            data.bid,
-            data.password_hash,
-            data.is_active,
-            data.phone,
-            data.bio,
-        };
-    }
-
-    pub fn upsertSQL() []const u8 {
-        return
-            \\INSERT INTO users (
-            \\    email, name, bid, password_hash, is_active, phone, bio
-            \\) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            \\ON CONFLICT (email) DO UPDATE SET
-            \\    name = EXCLUDED.name,
-            \\    bid = EXCLUDED.bid,
-            \\    password_hash = EXCLUDED.password_hash,
-            \\    is_active = EXCLUDED.is_active,
-            \\    phone = EXCLUDED.phone,
-            \\    bio = EXCLUDED.bio
-            \\RETURNING id
-        ;
-    }
-
-    pub fn upsertParams(data: CreateInput) struct {
-        []const u8,
-        []const u8,
-        ?[]const u8,
-        []const u8,
-        ?bool,
-        ?[]const u8,
-        ?[]const u8,
-    } {
-        return .{
-            data.email,
-            data.name,
-            data.bid,
-            data.password_hash,
-            data.is_active,
-            data.phone,
-            data.bio,
-        };
-    }
-
-    const base = BaseModel(Users);
-    // DDL operations
-
-    pub const truncate = base.truncate;
-
-    pub const tableExists = base.tableExists;
-
-    // CRUD operations
-    pub const findById = base.findById;
-
-    pub const findAll = base.findAll;
-
-    pub const insert = base.insert;
-
-    pub const insertMany = base.insertMany;
-
-    pub const insertAndReturn = base.insertAndReturn;
-
-    pub const update = base.update;
-
-    pub const updateAndReturn = base.updateAndReturn;
-
-    pub const upsert = base.upsert;
-
-    pub const upsertAndReturn = base.upsertAndReturn;
-
-    pub const softDelete = base.softDelete;
-
-    pub const hardDelete = base.hardDelete;
-
-    pub const count = base.count;
-
-    pub const fromRow = base.fromRow;
-
-    pub const query = Query.init();
-
-
-    /// JSON-safe response struct with UUIDs as hex strings
-    pub const JsonResponse = struct {
-        id: [36]u8,
-        email: []const u8,
-        name: []const u8,
-        bid: ?[]const u8,
-        password_hash: []const u8,
-        is_active: bool,
-        created_at: i64,
-        updated_at: i64,
-        deleted_at: ?i64,
-        phone: ?[]const u8,
-        bio: ?[]const u8,
-    };
-
-    /// Convert model to JSON-safe response with UUIDs as hex strings
-    pub fn toJsonResponse(self: Users) !JsonResponse {
-        return JsonResponse{
-            .id = try pg.uuidToHex(&self.id[0..16].*),
-            .email = self.email,
-            .name = self.name,
-            .bid = self.bid,
-            .password_hash = self.password_hash,
-            .is_active = self.is_active,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-            .phone = self.phone,
-            .bio = self.bio,
-        };
-    }
-
-    /// JSON-safe response struct with UUIDs as hex strings (excludes redacted fields)
-    pub const JsonResponseSafe = struct {
-        id: [36]u8,
-        email: []const u8,
-        name: []const u8,
-        bid: ?[]const u8,
-        is_active: bool,
-        created_at: i64,
-        updated_at: i64,
-        deleted_at: ?i64,
-        phone: ?[]const u8,
-        bio: ?[]const u8,
-    };
-
-    /// Convert model to JSON-safe response excluding redacted fields (passwords, tokens, etc.)
-    pub fn toJsonResponseSafe(self: Users) !JsonResponseSafe {
-        return JsonResponseSafe{
-            .id = try pg.uuidToHex(&self.id[0..16].*),
-            .email = self.email,
-            .name = self.name,
-            .bid = self.bid,
-            .is_active = self.is_active,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-            .phone = self.phone,
-            .bio = self.bio,
-        };
-    }
-    // Relationship methods
-    /// Fetch all related Posts records for this Users (one-to-many)
-    pub fn fetchPosts(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Posts {
-        const queryt = "SELECT * FROM posts WHERE user_id = $1";
-        var result = try db.query(queryt, .{self.id});
-        defer result.deinit();
-
-        var list = std.ArrayList(Posts){};
-        errdefer list.deinit(allocator);
-
-        while (try result.next()) |row| {
-            const item = try row.to(Posts, .{ .allocator = allocator, .map = .ordinal });
-            try list.append(allocator, item);
-        }
-
-        return try list.toOwnedSlice(allocator);
-    }
-
-    /// Fetch all related Comments records for this Users (one-to-many)
-    pub fn fetchComments(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Comments {
-        const queryt = "SELECT * FROM comments WHERE user_id = $1";
-        var result = try db.query(queryt, .{self.id});
-        defer result.deinit();
-
-        var list = std.ArrayList(Comments){};
-        errdefer list.deinit(allocator);
-
-        while (try result.next()) |row| {
-            const item = try row.to(Comments, .{ .allocator = allocator, .map = .ordinal });
-            try list.append(allocator, item);
-        }
-
-        return try list.toOwnedSlice(allocator);
-    }
-
+    return try list.toOwnedSlice(allocator);
+}

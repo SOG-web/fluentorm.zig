@@ -304,7 +304,7 @@ var query = PostCategory.query();
 defer query.deinit();
 
 const post_cats = try query
-    .where(.{ .field = .post_id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .post_id, .operator = .eq, .value = .{ .string = "$1" } })
     .fetch(&pool, allocator, .{post_id});
 defer allocator.free(post_cats);
 
@@ -467,7 +467,7 @@ var query = models.Post.query();
 defer query.deinit();
 
 const user_posts = try query
-    .where(.{ .field = .user_id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .user_id, .operator = .eq, .value = .{ .string = "$1" } })
     .orderBy(.{ .field = .created_at, .direction = .desc })
     .fetch(&pool, allocator, .{user_id});
 defer allocator.free(user_posts);

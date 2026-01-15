@@ -237,7 +237,7 @@ pub fn main() !void {
     defer query.deinit();
 
     const users = try query
-        .where(.{ .field = .email, .operator = .eq, .value = "$1" })
+        .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
         .fetch(db, allocator, .{"alice@example.com"});
     defer allocator.free(users);
 

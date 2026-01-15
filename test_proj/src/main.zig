@@ -62,4 +62,6 @@ pub fn main() !void {
 
     const sql = try user.buildSql(arena.allocator());
     std.debug.print("testing {s}\n", .{sql});
+
+    // SELECT users.id, jsonb_strip_nulls(to_jsonb(comments)) AS comments FROM users LEFT JOIN comments ON comments.user_id = users.id AND (comments.user_id = 'rou' OR comments.is_approved = true) AND comments.user_id = 'rou' AND (comments.user_id = 'rou' OR comments.is_approved = true) WHERE deleted_at IS NULL AND users.name = 'rou' AND users.is_active = true
 }

@@ -12,7 +12,7 @@ const users = try Users.query()
     .where(.{
         .field = .age,
         .operator = .gt,
-        .value = "$1",
+        .value = .{ .string = "$1" },
     })
     .orderBy(.{
         .field = .created_at,
@@ -66,7 +66,7 @@ Adds a `WHERE` clause. Multiple calls are combined with `AND`.
 .where(.{
     .field = .status,
     .operator = .eq,
-    .value = "$1",
+    .value = .{ .string = "$1" },
 })
 ```
 
@@ -78,24 +78,24 @@ Adds an `OR` condition to the `WHERE` clause.
 .orWhere(.{
     .field = .status,
     .operator = .eq,
-    .value = "$2",
+    .value = .{ .string = "$2" },
 })
 ```
 
-### `whereBetween(field: Field, low: []const u8, high: []const u8)`
+### `whereBetween(field: Field, low: WhereValue, high: WhereValue, valueType: InType)`
 
 Adds a BETWEEN clause.
 
 ```zig
-.whereBetween(.age, "$1", "$2")
+.whereBetween(.age, .{ .string = "$1" }, .{ .string = "$2" }, .string)
 ```
 
-### `whereNotBetween(field: Field, low: []const u8, high: []const u8)`
+### `whereNotBetween(field: Field, low: WhereValue, high: WhereValue, valueType: InType)`
 
 Adds a NOT BETWEEN clause.
 
 ```zig
-.whereNotBetween(.age, "13", "17")
+.whereNotBetween(.age, .{ .integer = 13 }, .{ .integer = 17 }, .integer)
 ```
 
 ### `whereIn(field: Field, values: []const []const u8)`
@@ -211,6 +211,28 @@ Adds a FULL OUTER JOIN clause.
 ```zig
 .fullJoin("orders", "users.id = orders.user_id")
 ```
+
+## Include Methods (Eager Loading)
+
+### `include(rel: IncludeClauseInput)`
+
+Eagerly loads related models using LEFT JOINs. This allows you to filter and select specific fields from related tables.
+
+```zig
+.include(.{
+    .comments = .{
+        .select = &.{ .id, .content },
+        .where = &.{.{
+            .field = .content,
+            .operator = .like,
+            .value = .{ .string = "%zig%" }
+        }}
+    }
+})
+```
+
+> [!NOTE]
+> Using `include` adds JOINs to the query, so you must use `fetchAs` or `fetchRaw` to retrieve the results, as the standard `fetch` method only maps to the base model.
 
 ## GROUP BY / HAVING Methods
 
@@ -385,7 +407,7 @@ const UserStats = struct { id: i64, post_count: i64 };
 const stats = try Users.query()
     .select(&.{.id})
     .selectAggregate(.count, .id, "post_count")
-    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
     .groupBy(&.{.id})
     .firstAs(UserStats, &pool, allocator, .{user_id});
 ```
@@ -407,7 +429,7 @@ Check if any records match the query.
 
 ```zig
 const has_users = try Users.query()
-    .where(.{ .field = .status, .operator = .eq, .value = "'active'" })
+    .where(.{ .field = .status, .operator = .eq, .value = .{ .string = "'active'" } })
     .exists(&pool, .{});
 ```
 
@@ -483,13 +505,23 @@ defer allocator.free(sql);
 - `.between` (`BETWEEN`)
 - `.not_between` (`NOT BETWEEN`)
 
+### `WhereValue`
+
+```zig
+union(enum) {
+    string: []const u8,
+    integer: i64,
+    boolean: bool,
+}
+```
+
 ### `WhereClause`
 
 ```zig
 struct {
     field: Field,
     operator: Operator,
-    value: ?[]const u8 = null, // Optional for IS NULL / IS NOT NULL
+    value: ?WhereValue = null, // Optional for IS NULL / IS NOT NULL
 }
 ```
 
@@ -540,8 +572,8 @@ const results = try query
     .selectAggregate(.sum, .amount, "total")
     .selectAggregate(.count, .id, "order_count")
     .innerJoin("users", "orders.user_id = users.id")
-    .where(.{ .field = .status, .operator = .eq, .value = "'completed'" })
-    .whereBetween(.amount, "10", "10000")
+    .where(.{ .field = .status, .operator = .eq, .value = .{ .string = "'completed'" } })
+    .whereBetween(.amount, .{ .integer = 10 }, .{ .integer = 10000 }, .integer)
     .groupBy(&.{.user_id})
     .havingAggregate(.sum, .amount, .gt, "100")
     .orderBy(.{ .field = .user_id, .direction = .asc })
@@ -574,7 +606,7 @@ For complex JOINs where you need to access columns from multiple tables:
 var result = try Users.query()
     .selectRaw("users.id, users.name, posts.title, posts.created_at")
     .innerJoin("posts", "users.id = posts.user_id")
-    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
     .fetchRaw(&pool, .{user_id});
 defer result.deinit();
 
@@ -593,7 +625,7 @@ For basic queries without JOINs or aggregates, use `fetch` directly:
 
 ```zig
 const active_users = try Users.query()
-    .where(.{ .field = .status, .operator = .eq, .value = "'active'" })
+    .where(.{ .field = .status, .operator = .eq, .value = .{ .string = "'active'" } })
     .orderBy(.{ .field = .created_at, .direction = .desc })
     .limit(10)
     .fetch(&pool, allocator, .{});
