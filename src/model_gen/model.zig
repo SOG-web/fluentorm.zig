@@ -583,6 +583,9 @@ pub fn generateCRUDWrappers(writer: anytype, struct_name: []const u8, has_upsert
         \\
         \\    pub const query = Query.init();
         \\
+        \\    // Relation types for eager loading (use with fetchAs)
+        \\    pub const Rel = @import("rel.zig");
+        \\
         \\
     );
 }
@@ -880,3 +883,247 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
         });
     }
 }
+
+/// Generate rel.zig file with explicit relation types for full IntelliSense support.
+/// Creates types like `UsersWithPosts`, `UsersWithComments`, `UsersWithAllRelations`.
+pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: []const u8, fields: []const Field, allocator: std.mem.Allocator) !void {
+    // Collect all relation info
+    var relations = std.ArrayList(RelationInfo){};
+    defer relations.deinit(allocator);
+
+    // Regular relationships (belongsTo, hasOne)
+    for (schema.relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
+
+        const field_name = try utils.relationshipToFieldName(allocator, rel);
+        const related_type = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        const is_many = rel.relationship_type == .one_to_many or rel.relationship_type == .many_to_many;
+
+        try relations.append(allocator, .{
+            .field_name = field_name,
+            .related_type = related_type,
+            .is_many = is_many,
+            .foreign_table = try allocator.dupe(u8, rel.references_table),
+        });
+    }
+
+    // HasMany relationships
+    for (schema.has_many_relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
+
+        const field_name = try utils.hasManyMethodName(allocator, rel.name);
+        var camel = try allocator.dupe(u8, field_name);
+        if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
+        allocator.free(field_name);
+
+        const related_type = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+
+        try relations.append(allocator, .{
+            .field_name = camel,
+            .related_type = related_type,
+            .is_many = true,
+            .foreign_table = try allocator.dupe(u8, rel.foreign_table),
+        });
+    }
+
+    if (relations.items.len == 0) return;
+
+    // Generate file header
+    try writer.writeAll(
+        \\// AUTO-GENERATED CODE - DO NOT EDIT
+        \\// Explicit relation types for full ZLS IntelliSense support
+        \\
+        \\const std = @import("std");
+        \\const Row = @import("pg").Row;
+        \\const Model = @import("model.zig");
+        \\
+    );
+
+    // Import related models
+    var seen = std.StringHashMap(void).init(allocator);
+    defer seen.deinit();
+    for (relations.items) |rel| {
+        if (!seen.contains(rel.foreign_table)) {
+            try seen.put(rel.foreign_table, {});
+            const snake_name = try utils.toLowerSnakeCase(allocator, rel.foreign_table);
+            defer allocator.free(snake_name);
+            try writer.print("const {s} = @import(\"../{s}/model.zig\");\n", .{ rel.related_type, snake_name });
+        }
+    }
+
+    try writer.writeAll("\n");
+
+    // Generate individual relation types: UsersWithPosts, UsersWithComments, etc.
+    for (relations.items) |rel| {
+        const type_name = try std.fmt.allocPrint(allocator, "{s}With{s}", .{ struct_name, rel.related_type });
+        defer allocator.free(type_name);
+
+        try writer.print("/// {s} with {s} relation loaded\n", .{ struct_name, rel.field_name });
+        try writer.print("pub const {s} = struct {{\n", .{type_name});
+
+        // Add all base fields
+        for (fields) |field| {
+            try writer.print("    {s}: {s},\n", .{ field.name, field.type.toZigType() });
+        }
+
+        // Add relation field
+        if (rel.is_many) {
+            try writer.print("    {s}: ?[]{s} = null,\n", .{ rel.field_name, rel.related_type });
+        } else {
+            try writer.print("    {s}: ?{s} = null,\n", .{ rel.field_name, rel.related_type });
+        }
+
+        try writer.writeAll("\n");
+
+        // Generate fromBase helper
+        try writer.print("    /// Create from a base {s} model with relation set to null\n", .{struct_name});
+        try writer.print("    pub fn fromBase(model: Model) @This() {{\n", .{});
+        try writer.writeAll("        return .{\n");
+        for (fields) |field| {
+            try writer.print("            .{s} = model.{s},\n", .{ field.name, field.name });
+        }
+        try writer.print("            .{s} = null,\n", .{rel.field_name});
+        try writer.writeAll("        };\n");
+        try writer.writeAll("    }\n\n");
+
+        // Generate toBase helper
+        try writer.print("    /// Extract the base {s} model (without relation)\n", .{struct_name});
+        try writer.writeAll("    pub fn toBase(self: @This()) Model {\n");
+        try writer.writeAll("        return .{\n");
+        for (fields) |field| {
+            try writer.print("            .{s} = self.{s},\n", .{ field.name, field.name });
+        }
+        try writer.writeAll("        };\n");
+        try writer.writeAll("    }\n\n");
+
+        // Generate fromRow helper that parses JSONB
+        try writer.writeAll("    /// Create from a database row, parsing JSONB relation columns.\n");
+        try writer.writeAll("    /// Use this with query results that include relations via LEFT JOIN.\n");
+        try writer.print("    pub fn fromRow(row: Row, allocator: std.mem.Allocator) !@This() {{\n", .{});
+        try writer.writeAll("        var result: @This() = undefined;\n\n");
+
+        // Map base fields
+        try writer.writeAll("        // Map base fields\n");
+        for (fields) |field| {
+            try writer.print("        result.{s} = row.get({s}, \"{s}\");\n", .{
+                field.name,
+                field.type.toZigType(),
+                field.name,
+            });
+        }
+
+        try writer.writeAll("\n");
+
+        // Parse JSONB relation field
+        try writer.print("        // Parse JSONB relation: {s}\n", .{rel.field_name});
+        try writer.print("        const {s}_json = row.get(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
+        try writer.print("        if ({s}_json) |json_str| {{\n", .{rel.field_name});
+        if (rel.is_many) {
+            try writer.print("            result.{s} = std.json.parseFromSlice([]{s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+        } else {
+            try writer.print("            result.{s} = std.json.parseFromSlice({s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+        }
+        try writer.writeAll("        } else {\n");
+        try writer.print("            result.{s} = null;\n", .{rel.field_name});
+        try writer.writeAll("        }\n\n");
+
+        try writer.writeAll("        return result;\n");
+        try writer.writeAll("    }\n");
+
+        try writer.writeAll("};\n\n");
+    }
+
+    // Generate WithAllRelations type if there are multiple relations
+    if (relations.items.len > 1) {
+        try writer.print("/// {s} with all relations loaded\n", .{struct_name});
+        try writer.print("pub const {s}WithAllRelations = struct {{\n", .{struct_name});
+
+        // Add all base fields
+        for (fields) |field| {
+            try writer.print("    {s}: {s},\n", .{ field.name, field.type.toZigType() });
+        }
+
+        // Add all relation fields
+        for (relations.items) |rel| {
+            if (rel.is_many) {
+                try writer.print("    {s}: ?[]{s} = null,\n", .{ rel.field_name, rel.related_type });
+            } else {
+                try writer.print("    {s}: ?{s} = null,\n", .{ rel.field_name, rel.related_type });
+            }
+        }
+
+        try writer.writeAll("\n");
+
+        // Generate fromBase helper
+        try writer.print("    /// Create from a base {s} model with all relations set to null\n", .{struct_name});
+        try writer.writeAll("    pub fn fromBase(model: Model) @This() {\n");
+        try writer.writeAll("        return .{\n");
+        for (fields) |field| {
+            try writer.print("            .{s} = model.{s},\n", .{ field.name, field.name });
+        }
+        for (relations.items) |rel| {
+            try writer.print("            .{s} = null,\n", .{rel.field_name});
+        }
+        try writer.writeAll("        };\n");
+        try writer.writeAll("    }\n\n");
+
+        // Generate toBase helper
+        try writer.print("    /// Extract the base {s} model (without relations)\n", .{struct_name});
+        try writer.writeAll("    pub fn toBase(self: @This()) Model {\n");
+        try writer.writeAll("        return .{\n");
+        for (fields) |field| {
+            try writer.print("            .{s} = self.{s},\n", .{ field.name, field.name });
+        }
+        try writer.writeAll("        };\n");
+        try writer.writeAll("    }\n\n");
+
+        // Generate fromRow helper that parses all JSONB relations
+        try writer.writeAll("    /// Create from a database row, parsing all JSONB relation columns.\n");
+        try writer.writeAll("    /// Use this with query results that include relations via LEFT JOIN.\n");
+        try writer.print("    pub fn fromRow(row: Row, allocator: std.mem.Allocator) !@This() {{\n", .{});
+        try writer.writeAll("        var result: @This() = undefined;\n\n");
+
+        // Map base fields
+        try writer.writeAll("        // Map base fields\n");
+        for (fields) |field| {
+            try writer.print("        result.{s} = row.get({s}, \"{s}\");\n", .{
+                field.name,
+                field.type.toZigType(),
+                field.name,
+            });
+        }
+
+        try writer.writeAll("\n        // Parse JSONB relations\n");
+
+        // Parse all JSONB relation fields
+        for (relations.items) |rel| {
+            try writer.print("        const {s}_json = row.get(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
+            try writer.print("        if ({s}_json) |json_str| {{\n", .{rel.field_name});
+            if (rel.is_many) {
+                try writer.print("            result.{s} = std.json.parseFromSlice([]{s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+            } else {
+                try writer.print("            result.{s} = std.json.parseFromSlice({s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+            }
+            try writer.print("        }} else {{\n            result.{s} = null;\n        }}\n", .{rel.field_name});
+        }
+
+        try writer.writeAll("\n        return result;\n");
+        try writer.writeAll("    }\n");
+
+        try writer.writeAll("};\n");
+    }
+
+    // Clean up relation memory
+    for (relations.items) |rel| {
+        allocator.free(rel.field_name);
+        allocator.free(rel.related_type);
+        allocator.free(rel.foreign_table);
+    }
+}
+
+const RelationInfo = struct {
+    field_name: []const u8,
+    related_type: []const u8,
+    is_many: bool,
+    foreign_table: []const u8,
+};

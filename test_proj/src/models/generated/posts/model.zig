@@ -183,6 +183,9 @@ const Posts = @This();
 
     pub const query = Query.init();
 
+    // Relation types for eager loading (use with fetchAs)
+    pub const Rel = @import("rel.zig");
+
 
     /// JSON-safe response struct with UUIDs as hex strings
     pub const JsonResponse = struct {

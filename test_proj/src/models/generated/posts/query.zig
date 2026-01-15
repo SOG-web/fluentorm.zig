@@ -789,32 +789,6 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
     return items.toOwnedSlice(allocator);
 }
 
-/// Execute query and return list of partials (optional fields) of the model.
-pub fn fetchPartial(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]Model.CommentsPartial {
-    if (self.hasCustomProjection()) {
-        return error.CustomProjectionNotSupported;
-    }
-
-    self.fill_base_select = false; // do not enforce base selects for partials
-
-    const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
-
-    var result = try db.queryOpts(sql, args, .{
-        .column_names = true,
-    });
-    defer result.deinit();
-
-    var items = std.ArrayList(Model.CommentsPartial){};
-    defer items.deinit(allocator);
-
-    while (try result.next()) |row| {
-        const partial = try row.to(Model.CommentsPartial, .{ .allocator = allocator, .map = .name });
-        try items.append(allocator, partial);
-    }
-
-    return items.toOwnedSlice(allocator);
-}
 
 /// Execute query and return list of items mapped to a custom result type.
 /// Use this when you have custom selects, aggregates, or need a difFieldEnumrent shape than the model.
@@ -855,6 +829,23 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
     return query.fetchRaw(self, db, args);
 }
 
+/// Fetch results using a relation type's fromRow() method for JSONB parsing.
+/// Use this when you have included relations that return JSONB columns.
+///
+/// The type R must have a `fromRow(row, allocator) !R` method (like types from rel.zig).
+///
+/// Example:
+/// ```zig
+/// const UsersWithPosts = Users.Rel.UsersWithPosts;
+/// const results = try User.query()
+///     .include(.{ .posts = .{} })
+///     .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
+/// // results[0].posts is now parsed from JSONB!
+/// ```
+pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+    return query.fetchWithRel(self, R, db, allocator, args);
+}
+
 /// Execute query and return first item or null.
 /// Returns an error if the query contains custom projections (JOINs, GROUP BY, aggregates, etc.).
 /// Use `firstAs` for custom result types or `firstRaw` for direct access.
@@ -881,27 +872,6 @@ pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
     return null;
 }
 
-/// Execute query and return first partial or null.
-pub fn firstPartial(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) !?Model.CommentsPartial {
-    if (self.hasCustomProjection()) {
-        return error.CustomProjectionNotSupported;
-    }
-    self.limit_val = 1;
-    const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
-
-    var result = try db.queryOpts(sql, args, .{
-        .column_names = true,
-    });
-    defer result.deinit();
-
-    if (try result.next()) |row| {
-        const partial = try row.to(Model.CommentsPartial, .{ .allocator = allocator, .map = .name });
-        return partial;
-    }
-    return null;
-}
-
 /// Execute query and return first item mapped to a custom result type, or null.
 ///
 /// Example:
@@ -915,6 +885,24 @@ pub fn firstPartial(self: *Self, db: Executor, allocator: std.mem.Allocator, arg
 /// ```
 pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
     return query.firstAs(self, R, db, allocator, args);
+}
+
+/// Fetch first result using a relation type's fromRow() method for JSONB parsing.
+/// Use this when you have included relations that return JSONB columns.
+///
+/// The type R must have a `fromRow(row, allocator) !R` method (like types from rel.zig).
+///
+/// Example:
+/// ```zig
+/// const UsersWithPosts = Users.Rel.UsersWithPosts;
+/// const user = try User.query()
+///     .include(.{ .posts = .{} })
+///     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = id }})
+///     .firstWithRel(UsersWithPosts, &pool, allocator, .{});
+/// // user.?.posts is now parsed from JSONB!
+/// ```
+pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+    return query.firstWithRel(self, R, db, allocator, args);
 }
 
 /// Execute query and return first row as pg.QueryRow or null.

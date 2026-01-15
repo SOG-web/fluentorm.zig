@@ -20,6 +20,16 @@ pub const Client = struct {
     pub const Categories = @import("categories/model.zig");
     pub const PostCategories = @import("post_categories/model.zig");
     pub const Comments = @import("comments/model.zig");
+
+    // Relation types for eager loading (use with fetchAs)
+    pub const Rel = struct {
+        pub const Users = @import("users/rel.zig");
+        pub const Posts = @import("posts/rel.zig");
+        pub const Profiles = @import("profiles/rel.zig");
+        pub const Categories = @import("categories/rel.zig");
+        pub const PostCategories = @import("post_categories/rel.zig");
+        pub const Comments = @import("comments/rel.zig");
+    };
 };
 
 pub const Tables = enum {

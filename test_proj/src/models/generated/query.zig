@@ -668,6 +668,44 @@ pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
     return items.toOwnedSlice(allocator);
 }
 
+/// Fetch results using a relation type's fromRow() method for JSONB parsing.
+/// Use this when you have included relations that return JSONB columns.
+///
+/// The type R must have a `fromRow(row, allocator) !R` method.
+///
+/// Example:
+/// ```zig
+/// const UsersWithPosts = Users.Rel.UsersWithPosts;
+/// const results = try query
+///     .include(.{ .posts = .{} })
+///     .fetchWithRel(UsersWithPosts, db, allocator, .{});
+/// // results[0].posts is now parsed from JSONB!
+/// ```
+pub fn fetchWithRel(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+    comptime {
+        if (!std.mem.eql(u8, R.fromRow, undefined)) {
+            @compileError("R must have fromRow method");
+        }
+    }
+
+    const temp_allocator = self.arena.allocator();
+    const sql = try self.buildSql(temp_allocator);
+
+    var result = try db.queryOpts(sql, args, .{
+        .column_names = true,
+    });
+    defer result.deinit();
+
+    var items = std.ArrayList(R){};
+    errdefer items.deinit(allocator);
+
+    while (try result.next()) |row| {
+        const item = try R.fromRow(row, allocator);
+        try items.append(allocator, item);
+    }
+    return try items.toOwnedSlice(allocator);
+}
+
 pub fn fetchRaw(self: anytype, db: Executor, args: anytype) !pg.Result {
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
@@ -690,6 +728,26 @@ pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
     var mapper = result.mapper(R, .{ .allocator = allocator });
     if (try mapper.next()) |item| {
         return item;
+    }
+    return null;
+}
+
+/// Fetch first result using a relation type's fromRow() method for JSONB parsing.
+/// Use this when you have included relations that return JSONB columns.
+///
+/// The type R must have a `fromRow(row, allocator) !R` method.
+pub fn firstWithRel(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+    self.limit_val = 1;
+    const temp_allocator = self.arena.allocator();
+    const sql = try self.buildSql(temp_allocator);
+
+    var result = try db.queryOpts(sql, args, .{
+        .column_names = true,
+    });
+    defer result.deinit();
+
+    if (try result.next()) |row| {
+        return try R.fromRow(row, allocator);
     }
     return null;
 }

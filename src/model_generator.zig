@@ -79,6 +79,19 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
 
         try writer.print("    pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, snake_case_name });
     }
+
+    // Add Rel namespace for relation types
+    try writer.writeAll("\n    // Relation types for eager loading (use with fetchAs)\n");
+    try writer.writeAll("    pub const Rel = struct {\n");
+    for (schemas) |schema| {
+        const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
+        defer allocator.free(struct_name);
+        const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
+        defer allocator.free(snake_case_name);
+        try writer.print("        pub const {s} = @import(\"{s}/rel.zig\");\n", .{ struct_name, snake_case_name });
+    }
+    try writer.writeAll("    };\n");
+
     try writer.writeAll("};\n\n");
 
     // Generate Tables enum
@@ -195,6 +208,9 @@ fn generateModelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_n
     try std.fs.cwd().writeFile(.{ .sub_path = file_name, .data = output.items });
 
     std.debug.print("    -> Created {s}/model.zig\n", .{output_dir});
+
+    // Generate rel.zig with explicit relation types
+    try generateRelFile(allocator, schema, struct_name, final_fields, output_dir);
 }
 
 fn generateQueryFile(allocator: std.mem.Allocator, schema: TableSchema, schema_file: []const u8, output_dir: []const u8) !void {
@@ -215,4 +231,21 @@ fn generateQueryFile(allocator: std.mem.Allocator, schema: TableSchema, schema_f
     try query.generatePubMethods(writer, schema, allocator);
     try std.fs.cwd().writeFile(.{ .sub_path = file_name, .data = output.items });
     std.debug.print("    -> Created {s}/query.zig\n", .{output_dir});
+}
+
+fn generateRelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_name: []const u8, fields: []const Field, output_dir: []const u8) !void {
+    const file_name = try std.fmt.allocPrint(allocator, "{s}/rel.zig", .{output_dir});
+    defer allocator.free(file_name);
+
+    var output = std.ArrayList(u8){};
+    defer output.deinit(allocator);
+    const writer = output.writer(allocator);
+
+    try model.generateRelationTypes(writer, schema, struct_name, fields, allocator);
+
+    // Only write file if there's content (has relations)
+    if (output.items.len > 0) {
+        try std.fs.cwd().writeFile(.{ .sub_path = file_name, .data = output.items });
+        std.debug.print("    -> Created {s}/rel.zig\n", .{output_dir});
+    }
 }

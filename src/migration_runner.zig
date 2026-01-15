@@ -8,17 +8,51 @@ pub const Config = struct {
     username: []const u8,
     password: ?[]const u8,
 
-    pub fn fromEnv() Config {
-        return .{
-            .host = std.posix.getenv("FLUENT_DB_HOST") orelse "127.0.0.1",
-            .port = blk: {
-                const port_str = std.posix.getenv("FLUENT_DB_PORT") orelse "5432";
-                break :blk std.fmt.parseInt(u16, port_str, 10) catch 5432;
-            },
-            .database = std.posix.getenv("FLUENT_DB_NAME") orelse "postgres",
-            .username = std.posix.getenv("FLUENT_DB_USER") orelse "postgres",
-            .password = std.posix.getenv("FLUENT_DB_PASSWORD"),
+    pub fn fromEnvOwned(allocator: std.mem.Allocator) !Config {
+        const host = std.process.getEnvVarOwned(allocator, "FLUENT_DB_HOST") catch |err| blk: {
+            if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "127.0.0.1");
+            return err;
         };
+        errdefer allocator.free(host);
+
+        const port_str = std.process.getEnvVarOwned(allocator, "FLUENT_DB_PORT") catch |err| blk: {
+            if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "5432");
+            return err;
+        };
+        defer allocator.free(port_str);
+        const port = std.fmt.parseInt(u16, port_str, 10) catch 5432;
+
+        const database = std.process.getEnvVarOwned(allocator, "FLUENT_DB_NAME") catch |err| blk: {
+            if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "postgres");
+            return err;
+        };
+        errdefer allocator.free(database);
+
+        const username = std.process.getEnvVarOwned(allocator, "FLUENT_DB_USER") catch |err| blk: {
+            if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "postgres");
+            return err;
+        };
+        errdefer allocator.free(username);
+
+        const password = std.process.getEnvVarOwned(allocator, "FLUENT_DB_PASSWORD") catch |err| blk: {
+            if (err == error.EnvironmentVariableNotFound) break :blk null;
+            return err;
+        };
+
+        return .{
+            .host = host,
+            .port = port,
+            .database = database,
+            .username = username,
+            .password = password,
+        };
+    }
+
+    pub fn deinit(self: *Config, allocator: std.mem.Allocator) void {
+        allocator.free(self.host);
+        allocator.free(self.database);
+        allocator.free(self.username);
+        if (self.password) |p| allocator.free(p);
     }
 };
 
@@ -462,7 +496,8 @@ pub fn main() !void {
         i += 1;
     }
 
-    const config = Config.fromEnv();
+    var config = try Config.fromEnvOwned(allocator);
+    defer config.deinit(allocator);
 
     std.debug.print("Connecting to PostgreSQL at {s}:{d}/{s}...\n", .{
         config.host,
