@@ -4,7 +4,7 @@
 /// ```zig
 /// .select(&.{ .id, .name })
 /// ```
-pub fn select(self: *Self, fields: SelectField) *Self {
+pub fn select(self: *Self, comptime fields: SelectField) *Self {
     query.select(self, fields);
     return self;
 }
@@ -26,7 +26,7 @@ pub fn distinct(self: *Self) *Self {
 /// ```zig
 /// .selectAggregate(.sum, .amount, "total_amount")
 /// ```
-pub fn selectAggregate(self: *Self, agg: AggregateType, field: FieldEnum, alias: []const u8) *Self {
+pub fn selectAggregate(self: *Self, comptime agg: AggregateType, comptime field: FieldEnum, alias: []const u8) *Self {
     query.selectAggregate(self, agg, field, alias);
     return self;
 }
@@ -48,7 +48,7 @@ pub fn selectRaw(self: *Self, raw_sql: []const u8) *Self {
 /// ```zig
 /// .where(.{ .field = .age, .operator = .gt, .value = "$1" })
 /// ```
-pub fn where(self: *Self, clause: WhereClause) *Self {
+pub fn where(self: *Self, comptime clause: WhereClause) *Self {
     query.where(self, clause);
     return self;
 }
@@ -59,12 +59,12 @@ pub fn where(self: *Self, clause: WhereClause) *Self {
 /// ```zig
 /// .orWhere(.{ .field = .age, .operator = .gt, .value = "$1" })
 /// ```
-pub fn orWhere(self: *Self, clause: WhereClause) *Self {
+pub fn orWhere(self: *Self, comptime clause: WhereClause) *Self {
     query.orWhere(self, clause);
     return self;
 }
 
-fn buildWhereClauseSql(self: *Self, clause: WhereClause) ![]const u8 {
+fn buildWhereClauseSql(self: *Self, comptime clause: WhereClause) ![]const u8 {
     return query.buildWhereClauseSql(self, clause);
 }
 
@@ -74,7 +74,7 @@ fn buildWhereClauseSql(self: *Self, clause: WhereClause) ![]const u8 {
 /// ```zig
 /// .whereBetween(.age, "$1", "$2")
 /// ```
-pub fn whereBetween(self: *Self, field: FieldEnum, low: []const u8, high: []const u8, valueType: InType) *Self {
+pub fn whereBetween(self: *Self, comptime field: FieldEnum, low: []const u8, high: []const u8, comptime valueType: InType) *Self {
     query.whereBetween(self, field, low, high, valueType);
     return self;
 }
@@ -85,7 +85,7 @@ pub fn whereBetween(self: *Self, field: FieldEnum, low: []const u8, high: []cons
 /// ```zig
 /// .whereNotBetween(.age, "$1", "$2")
 /// ```
-pub fn whereNotBetween(self: *Self, field: FieldEnum, low: []const u8, high: []const u8, valueType: InType) *Self {
+pub fn whereNotBetween(self: *Self, comptime field: FieldEnum, low: []const u8, high: []const u8, comptime valueType: InType) *Self {
     query.whereNotBetween(self, field, low, high, valueType);
     return self;
 }
@@ -96,7 +96,7 @@ pub fn whereNotBetween(self: *Self, field: FieldEnum, low: []const u8, high: []c
 /// ```zig
 /// .whereIn(.status, &.{ "'active'", "'pending'" })
 /// ```
-pub fn whereIn(self: *Self, field: FieldEnum, values: []const []const u8, valueType: InType) *Self {
+pub fn whereIn(self: *Self, comptime field: FieldEnum, values: []const []const u8, comptime valueType: InType) *Self {
     query.whereIn(self, field, values, valueType);
     return self;
 }
@@ -107,7 +107,7 @@ pub fn whereIn(self: *Self, field: FieldEnum, values: []const []const u8, valueT
 /// ```zig
 /// .whereNotIn(.status, &.{ "'deleted'", "'archived'" })
 /// ```
-pub fn whereNotIn(self: *Self, field: FieldEnum, values: []const []const u8, valueType: InType) *Self {
+pub fn whereNotIn(self: *Self, comptime field: FieldEnum, values: []const []const u8, comptime valueType: InType) *Self {
     query.whereNotIn(self, field, values, valueType);
     return self;
 }
@@ -140,7 +140,7 @@ pub fn orWhereRaw(self: *Self, raw_sql: []const u8) *Self {
 /// ```zig
 /// .whereNull(.deleted_at)
 /// ```
-pub fn whereNull(self: *Self, field: FieldEnum) *Self {
+pub fn whereNull(self: *Self, comptime field: FieldEnum) *Self {
     query.whereNull(self, field);
     return self;
 }
@@ -151,7 +151,7 @@ pub fn whereNull(self: *Self, field: FieldEnum) *Self {
 /// ```zig
 /// .whereNotNull(.email_verified_at)
 /// ```
-pub fn whereNotNull(self: *Self, field: FieldEnum) *Self {
+pub fn whereNotNull(self: *Self, comptime field: FieldEnum) *Self {
     query.whereNotNull(self, field);
     return self;
 }
@@ -184,7 +184,7 @@ pub fn whereNotExists(self: *Self, subquery: []const u8) *Self {
 /// ```zig
 /// .whereSubquery(.id, .in, "SELECT user_id FROM premium_users")
 /// ```
-pub fn whereSubquery(self: *Self, field: FieldEnum, operator: Operator, subquery: []const u8) *Self {
+pub fn whereSubquery(self: *Self, comptime field: FieldEnum, comptime operator: Operator, subquery: []const u8) *Self {
     query.whereSubquery(self, field, operator, subquery);
     return self;
 }
@@ -195,54 +195,11 @@ pub fn whereSubquery(self: *Self, field: FieldEnum, operator: Operator, subquery
 /// ```zig
 /// .join(.inner, "posts", "users.id = posts.user_id")
 /// ```
-pub fn join(self: *Self, join_type: JoinType, table: []const u8, on_clause: []const u8) *Self {
-    query.join(self, join_type, table, on_clause);
+pub fn join(self: *Self, comptime join_clause: JoinClause) *Self {
+    query.join(self, join_clause);
     return self;
 }
 
-/// Add an INNER JOIN clause
-///
-/// Example:
-/// ```zig
-/// .innerJoin("posts", "users.id = posts.user_id")
-/// ```
-pub fn innerJoin(self: *Self, table: []const u8, on_clause: []const u8) *Self {
-    query.innerJoin(self, table, on_clause);
-    return self;
-}
-
-/// Add a LEFT JOIN clause
-///
-/// Example:
-/// ```zig
-/// .leftJoin("posts", "users.id = posts.user_id")
-/// ```
-pub fn leftJoin(self: *Self, table: []const u8, on_clause: []const u8) *Self {
-    query.leftJoin(self, table, on_clause);
-    return self;
-}
-
-/// Add a RIGHT JOIN clause
-///
-/// Example:
-/// ```zig
-/// .rightJoin("posts", "users.id = posts.user_id")
-/// ```
-pub fn rightJoin(self: *Self, table: []const u8, on_clause: []const u8) *Self {
-    query.rightJoin(self, table, on_clause);
-    return self;
-}
-
-/// Add a FULL OUTER JOIN clause
-///
-/// Example:
-/// ```zig
-/// .fullJoin("posts", "users.id = posts.user_id")
-/// ```
-pub fn fullJoin(self: *Self, table: []const u8, on_clause: []const u8) *Self {
-    query.fullJoin(self, table, on_clause);
-    return self;
-}
 
 /// Add GROUP BY clause
 ///
@@ -250,7 +207,7 @@ pub fn fullJoin(self: *Self, table: []const u8, on_clause: []const u8) *Self {
 /// ```zig
 /// .groupBy(&.{ .status, .role })
 /// ```
-pub fn groupBy(self: *Self, fields: []const FieldEnum) *Self {
+pub fn groupBy(self: *Self, comptime fields: []const FieldEnum) *Self {
     query.groupBy(self, fields);
     return self;
 }
@@ -283,7 +240,7 @@ pub fn having(self: *Self, condition: []const u8) *Self {
 /// ```zig
 /// .havingAggregate(.count, .id, .gt, "$1")
 /// ```
-pub fn havingAggregate(self: *Self, agg: AggregateType, field: FieldEnum, operator: Operator, value: []const u8) *Self {
+pub fn havingAggregate(self: *Self, comptime agg: AggregateType, comptime field: FieldEnum, comptime operator: Operator, value: []const u8) *Self {
     query.havingAggregate(self, agg, field, operator, value);
     return self;
 }
@@ -295,7 +252,7 @@ pub fn havingAggregate(self: *Self, agg: AggregateType, field: FieldEnum, operat
 /// .orderBy(.{ .field = .created_at, .direction = .desc })
 /// .orderBy(.{ .field = .name, .direction = .asc })
 /// ```
-pub fn orderBy(self: *Self, clause: OrderByClause) *Self {
+pub fn orderBy(self: *Self, comptime clause: OrderByClause) *Self {
     query.orderBy(self, clause);
     return self;
 }
@@ -591,7 +548,7 @@ pub fn pluck(self: *Self, db: Executor, allocator: std.mem.Allocator, field: Fie
 /// ```zig
 /// const total = try Order.query().sum(&pool, .amount, .{});
 /// ```
-pub fn sum(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn sum(self: *Self, db: Executor, comptime field: FieldEnum, args: anytype) !f64 {
     return self.aggregate(db, .sum, field, args);
 }
 
@@ -601,7 +558,7 @@ pub fn sum(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 /// ```zig
 /// const avg_rating = try Review.query().avg(&pool, .rating, .{});
 /// ```
-pub fn avg(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn avg(self: *Self, db: Executor, comptime field: FieldEnum, args: anytype) !f64 {
     return self.aggregate(db, .avg, field, args);
 }
 
@@ -611,7 +568,7 @@ pub fn avg(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 /// ```zig
 /// const min_price = try Product.query().min(&pool, .price, .{});
 /// ```
-pub fn min(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn min(self: *Self, db: Executor, comptime field: FieldEnum, args: anytype) !f64 {
     return self.aggregate(db, .min, field, args);
 }
 
@@ -621,10 +578,10 @@ pub fn min(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 /// ```zig
 /// const max_price = try Product.query().max(&pool, .price, .{});
 /// ```
-pub fn max(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn max(self: *Self, db: Executor, comptime field: FieldEnum, args: anytype) !f64 {
     return self.aggregate(db, .max, field, args);
 }
 
-fn aggregate(self: *Self, db: Executor, agg: AggregateType, field: FieldEnum, args: anytype) !f64 {
+fn aggregate(self: *Self, db: Executor, comptime agg: AggregateType, comptime field: FieldEnum, args: anytype) !f64 {
     return query.aggregate(self, db, agg, field, args, Model);
 }

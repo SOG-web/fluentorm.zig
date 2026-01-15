@@ -112,7 +112,7 @@ pub fn reset(self: *Self) void {
 /// ```zig
 /// .select(&.{ .id, .name })
 /// ```
-pub fn select(self: *Self, fields: SelectField) *Self {
+pub fn select(self: *Self, comptime fields: SelectField) *Self {
     self.base_select_custom = true;
     query.select(self, fields);
     return self;
