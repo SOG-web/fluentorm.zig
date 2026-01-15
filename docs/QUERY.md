@@ -2,9 +2,6 @@
 
 The `QueryBuilder` provides a fluent API for constructing complex SQL queries in a type-safe manner.
 
-> [!NOTE]
-> Due to [ZLS issue #2515](https://github.com/zigtools/zls/issues/2515), auto-complete for `Field` enums (e.g., `.id`, `.name`) does not work in editors. However, **type safety is strictly enforced**: using an invalid field name will result in a compile-time error.
-
 ## Usage
 
 ```zig
