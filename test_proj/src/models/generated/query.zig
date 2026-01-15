@@ -59,6 +59,12 @@ pub const Operator = enum {
     }
 };
 
+pub const WhereValue = union(enum) {
+    string: []const u8,
+    integer: i64,
+    boolean: bool,
+};
+
 pub const WhereClauseType = enum {
     @"and",
     @"or",
@@ -178,7 +184,7 @@ pub fn selectRaw(self: anytype, raw_sql: []const u8) void {
 }
 
 pub fn where(self: anytype, clause: anytype) void {
-    const sql = buildWhereClauseSql(self, clause) catch return;
+    const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
         .clause_type = .@"and",
@@ -186,14 +192,14 @@ pub fn where(self: anytype, clause: anytype) void {
 }
 
 pub fn orWhere(self: anytype, clause: anytype) void {
-    const sql = buildWhereClauseSql(self, clause) catch return;
+    const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
         .clause_type = .@"or",
     }) catch return;
 }
 
-pub fn buildWhereClauseSql(self: anytype, clause: anytype) ![]const u8 {
+pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) ![]const u8 {
     const op_str = clause.operator.toSql();
 
     // Handle IS NULL / IS NOT NULL which don't have a value
@@ -206,33 +212,42 @@ pub fn buildWhereClauseSql(self: anytype, clause: anytype) ![]const u8 {
     }
 
     // Handle standard operators
-    if (clause.value) |val| {
-        return try std.fmt.allocPrint(
-            self.arena.allocator(),
-            "{s} {s} {s}",
-            .{ @tagName(clause.field), op_str, val },
-        );
+    if (value) |val| {
+        const str = switch (val) {
+            .boolean, .integer => |b| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s} {s} {s}",
+                .{ @tagName(clause.field), op_str, b },
+            ),
+            .string => |s| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s} {s} '{s}'",
+                .{ @tagName(clause.field), op_str, s },
+            ),
+        };
+
+        return str;
     }
 
     return "";
 }
 
-pub fn whereBetween(self: anytype, field: anytype, low: []const u8, high: []const u8, valueType: InType) void {
+pub fn whereBetween(self: anytype, field: anytype, low: WhereValue, high: WhereValue, valueType: InType) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
             self.arena.allocator(),
             "'{s}' AND '{s}'",
-            .{ low, high },
+            .{ low.string, high.string },
         ) catch return,
         .integer => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.integer, high.integer },
         ) catch return,
         .boolean => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.boolean, high.boolean },
         ) catch return,
     };
 
@@ -247,22 +262,22 @@ pub fn whereBetween(self: anytype, field: anytype, low: []const u8, high: []cons
     }) catch return;
 }
 
-pub fn whereNotBetween(self: anytype, field: anytype, low: []const u8, high: []const u8, valueType: InType) void {
+pub fn whereNotBetween(self: anytype, field: anytype, low: WhereValue, high: WhereValue, valueType: InType) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
             self.arena.allocator(),
             "'{s}' AND '{s}'",
-            .{ low, high },
+            .{ low.string, high.string },
         ) catch return,
         .integer => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.integer, high.integer },
         ) catch return,
         .boolean => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.boolean, high.boolean },
         ) catch return,
     };
     const sql = std.fmt.allocPrint(
@@ -276,25 +291,16 @@ pub fn whereNotBetween(self: anytype, field: anytype, low: []const u8, high: []c
     }) catch return;
 }
 
-pub fn whereIn(self: anytype, field: anytype, values: []const []const u8, valueType: InType) void {
+pub fn whereIn(self: anytype, field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         values_str.appendSlice(self.arena.allocator(), val) catch return;
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         if (i < values.len - 1) {
             values_str.appendSlice(self.arena.allocator(), ", ") catch return;
         }
@@ -312,25 +318,14 @@ pub fn whereIn(self: anytype, field: anytype, values: []const []const u8, valueT
     }) catch return;
 }
 
-pub fn whereNotIn(self: anytype, field: anytype, values: []const []const u8, valueType: InType) void {
+pub fn whereNotIn(self: anytype, field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
         values_str.appendSlice(self.arena.allocator(), val) catch return;
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         if (i < values.len - 1) {
             values_str.appendSlice(self.arena.allocator(), ", ") catch return;
         }

@@ -24,9 +24,13 @@ const Model = @import("model.zig");
 const FieldEnum = Model.FieldEnum;
 const RelationEnum = Model.RelationEnum;
 const IncludeClauseInput = Model.IncludeClauseInput;
+const JoinClause = query.JoinClause;
+const WhereValue = query.WhereValue;
 
 // Related models
 const Self = @This();
+
+const tablename = Model.tableName();
 
 // Fields
 arena: std.heap.ArenaAllocator,
@@ -35,7 +39,7 @@ where_clauses: std.ArrayList(WhereClauseInternal),
 order_clauses: std.ArrayList([]const u8),
 group_clauses: std.ArrayList([]const u8),
 having_clauses: std.ArrayList([]const u8),
-join_clauses: std.ArrayList([]const u8),
+join_clauses: std.ArrayList(JoinClause),
 limit_val: ?u64 = null,
 offset_val: ?u64 = null,
 include_deleted: bool = false,
@@ -48,7 +52,7 @@ fill_base_select: bool = false,
 pub const WhereClause = struct {
     field: FieldEnum,
     operator: Operator,
-    value: ?[]const u8 = null,
+    value: ?WhereValue = null,
 };
 
 pub const OrderByClause = struct {
@@ -74,7 +78,7 @@ pub fn init() Self {
         .order_clauses = std.ArrayList([]const u8){},
         .group_clauses = std.ArrayList([]const u8){},
         .having_clauses = std.ArrayList([]const u8){},
-        .join_clauses = std.ArrayList([]const u8){},
+        .join_clauses = std.ArrayList(JoinClause){},
         .includes_clauses = std.ArrayList(IncludeClauseInput){},
     };
 }
@@ -137,6 +141,7 @@ pub fn distinct(self: *Self) *Self {
 /// ```
 pub fn selectAggregate(self: *Self, agg: AggregateType, field: FieldEnum, alias: []const u8) *Self {
     query.selectAggregate(self, agg, field, alias);
+    self.select_raw = true;
     return self;
 }
 
@@ -175,7 +180,7 @@ pub fn orWhere(self: *Self, clause: WhereClause) *Self {
 }
 
 fn buildWhereClauseSql(self: *Self, clause: WhereClause) ![]const u8 {
-    return query.buildWhereClauseSql(self, clause);
+    return query.buildWhereClauseSql(self, clause, clause.value);
 }
 
 /// Add a BETWEEN clause
@@ -184,7 +189,7 @@ fn buildWhereClauseSql(self: *Self, clause: WhereClause) ![]const u8 {
 /// ```zig
 /// .whereBetween(.age, "$1", "$2")
 /// ```
-pub fn whereBetween(self: *Self, field: FieldEnum, low: []const u8, high: []const u8, valueType: InType) *Self {
+pub fn whereBetween(self: *Self, field: FieldEnum, low: WhereValue, high: WhereValue, valueType: InType) *Self {
     query.whereBetween(self, field, low, high, valueType);
     return self;
 }
@@ -195,7 +200,7 @@ pub fn whereBetween(self: *Self, field: FieldEnum, low: []const u8, high: []cons
 /// ```zig
 /// .whereNotBetween(.age, "$1", "$2")
 /// ```
-pub fn whereNotBetween(self: *Self, field: FieldEnum, low: []const u8, high: []const u8, valueType: InType) *Self {
+pub fn whereNotBetween(self: *Self, field: FieldEnum, low: WhereValue, high: WhereValue, valueType: InType) *Self {
     query.whereNotBetween(self, field, low, high, valueType);
     return self;
 }
@@ -206,8 +211,8 @@ pub fn whereNotBetween(self: *Self, field: FieldEnum, low: []const u8, high: []c
 /// ```zig
 /// .whereIn(.status, &.{ "'active'", "'pending'" })
 /// ```
-pub fn whereIn(self: *Self, field: FieldEnum, values: []const []const u8, valueType: InType) *Self {
-    query.whereIn(self, field, values, valueType);
+pub fn whereIn(self: *Self, field: FieldEnum, values: []const []const u8) *Self {
+    query.whereIn(self, field, values);
     return self;
 }
 
@@ -217,8 +222,8 @@ pub fn whereIn(self: *Self, field: FieldEnum, values: []const []const u8, valueT
 /// ```zig
 /// .whereNotIn(.status, &.{ "'deleted'", "'archived'" })
 /// ```
-pub fn whereNotIn(self: *Self, field: FieldEnum, values: []const []const u8, valueType: InType) *Self {
-    query.whereNotIn(self, field, values, valueType);
+pub fn whereNotIn(self: *Self, field: FieldEnum, values: []const []const u8) *Self {
+    query.whereNotIn(self, field, values);
     return self;
 }
 
@@ -300,145 +305,50 @@ pub fn whereSubquery(self: *Self, field: FieldEnum, operator: Operator, subquery
 }
 
 pub fn include(self: *Self, rel: IncludeClauseInput) *Self {
-    self.includes_clauses.append(self.arena.allocator(), rel);
-    // build include sql using inner join
-    const include_sql = try self.buildIncludeSql(rel);
-    self.join_clauses.append(self.arena.allocator(), include_sql);
-
+    query.include(self, rel);
     return self;
 }
 
-fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) ![]const u8 {
-    const allocator = self.arena.allocator();
+// SELECT
+//   users.*,
+//   jsonb_strip_nulls(to_jsonb(wallets)) AS wallet
+// FROM users
+// LEFT JOIN wallets
+//   ON users.id = wallets.user_id
+//  AND wallets.is_active = true;
+
+fn buildIncludeSql(_: *Self, rel: IncludeClauseInput) !JoinClause {
     const rel_tag = std.meta.activeTag(rel);
     const relation = Model.getRelation(rel_tag);
-    const base_table = Model.tableName();
 
     // Default select: if user didn't specify any base select, keep base columns.
-    if (self.select_clauses.items.len == 0) {
-        const base_star = try std.fmt.allocPrint(allocator, "{s}.*", .{base_table});
-        self.select_clauses.append(allocator, base_star) catch {};
-    }
-
-    // Build a derived-table join per include so we can apply filters without duplicating base rows.
-    var select_parts = std.ArrayList([]const u8){};
-    defer select_parts.deinit(allocator);
-
-    // Always include the join key from the related table.
-    const join_key = relation.foreign_key;
-    const join_key_sel = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ relation.foreign_table, join_key });
-    try select_parts.append(allocator, join_key_sel);
-
-    // Project requested fields.
-    switch (rel) {
-        .post => |cfg| {
-            for (cfg.select) |field| {
-                const col = @tagName(field);
-                const sel = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ relation.foreign_table, col });
-                try select_parts.append(allocator, sel);
-
-                const aliased = try std.fmt.allocPrint(allocator, "{s}.{s} AS post__{s}", .{ relation.foreign_table, col, col });
-                self.select_clauses.append(allocator, aliased) catch {};
-            }
-        },
-        .user => |cfg| {
-            for (cfg.select) |field| {
-                const col = @tagName(field);
-                const sel = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ relation.foreign_table, col });
-                try select_parts.append(allocator, sel);
-
-                const aliased = try std.fmt.allocPrint(allocator, "{s}.{s} AS user__{s}", .{ relation.foreign_table, col, col });
-                self.select_clauses.append(allocator, aliased) catch {};
-            }
-        },
-    }
-
-    // WHERE conditions inside the derived table
-    var where_parts = std.ArrayList([]const u8){};
-    defer where_parts.deinit(allocator);
-
-    switch (rel) {
-        .post => |cfg| {
-            if (!cfg.include_deleted and @hasField(Posts.PostsPartial, "deleted_at")) {
-                const sd = try std.fmt.allocPrint(allocator, "{s}.deleted_at IS NULL", .{relation.foreign_table});
-                try where_parts.append(allocator, sd);
-            }
-            for (cfg.where) |w| {
-                const wsql = try buildIncludeWhere(allocator, relation.foreign_table, w);
-                try where_parts.append(allocator, wsql);
-            }
-        },
-        .user => |cfg| {
-            if (!cfg.include_deleted and @hasField(Users.UsersPartial, "deleted_at")) {
-                const sd = try std.fmt.allocPrint(allocator, "{s}.deleted_at IS NULL", .{relation.foreign_table});
-                try where_parts.append(allocator, sd);
-            }
-            for (cfg.where) |w| {
-                const wsql = try buildIncludeWhere(allocator, relation.foreign_table, w);
-                try where_parts.append(allocator, wsql);
-            }
-        },
-    }
-
-    var sel_buf = std.ArrayList(u8){};
-    defer sel_buf.deinit(allocator);
-    for (select_parts.items, 0..) |sp, i| {
-        if (i > 0) try sel_buf.appendSlice(allocator, ", ");
-        try sel_buf.appendSlice(allocator, sp);
-    }
-
-    var derived = std.ArrayList(u8){};
-    defer derived.deinit(allocator);
-    try derived.appendSlice(allocator, "SELECT ");
-    try derived.appendSlice(allocator, sel_buf.items);
-    try derived.writer(allocator).print(" FROM {s}", .{relation.foreign_table});
-
-    if (where_parts.items.len > 0) {
-        try derived.appendSlice(allocator, " WHERE ");
-        for (where_parts.items, 0..) |wp, i| {
-            if (i > 0) try derived.appendSlice(allocator, " AND ");
-            try derived.appendSlice(allocator, wp);
-        }
-    }
-
-    const alias = switch (rel_tag) {
-        .post => "post_inc",
-        .user => "user_inc",
-    };
-
-    const on_clause = try std.fmt.allocPrint(
-        allocator,
-        "{s}.{s} = {s}.{s}",
-        .{ base_table, relation.local_key, alias, relation.foreign_key },
-    );
+    // if (self.select_clauses.items.len == 0) {
+    //     const base_star = try std.fmt.allocPrint(allocator, "jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
+    //         @tagName(relation.foreign_table),
+    //         @tagName(relation.foreign_table),
+    //     });
+    //     self.select_clauses.append(allocator, base_star) catch {};
+    // }
 
     // Use LEFT JOIN to ensure we don't filter out comments that have no related record
     // (e.g. optional relations or soft-deleted parents)
-    return try std.fmt.allocPrint(
-        allocator,
-        "{s} ({s}) AS {s} ON {s}",
-        .{ JoinType.left.toSql(), derived.items, alias, on_clause },
-    );
+    return JoinClause{
+        .join_type = JoinType.left,
+        .join_table = relation.foreign_table,
+        .join_field = relation.foreign_key,
+        .join_operator = .eq,
+        .base_field = relation.local_key,
+    };
 }
 
-fn buildIncludeWhere(allocator: std.mem.Allocator, table: []const u8, clause: anytype) ![]const u8 {
-    const op_str = clause.operator.toSql();
-
-    if (clause.operator == .is_null or clause.operator == .is_not_null) {
-        return try std.fmt.allocPrint(allocator, "{s}.{s} {s}", .{ table, @tagName(clause.field), op_str });
-    }
-
-    if (clause.value) |val| {
-        return try std.fmt.allocPrint(allocator, "{s}.{s} {s} {s}", .{ table, @tagName(clause.field), op_str, val });
-    }
-
-    return "";
+fn buildIncludeWhere(allocator: std.mem.Allocator, table: []const u8, clause: WhereClause) ![]const u8 {
+    return query.buildIncludeWhere(allocator, table, clause, clause.value);
 }
 
 fn hydrateIncludes(_: std.mem.Allocator, row: pg.Row, item: *Model, includes: []const IncludeClauseInput) !void {
     for (includes) |rel| {
         switch (rel) {
-            .post => |cfg| {
+            .posts => |cfg| {
                 var partial = Posts.PostsPartial{};
                 var any_set = false;
 
@@ -481,7 +391,7 @@ fn hydrateIncludes(_: std.mem.Allocator, row: pg.Row, item: *Model, includes: []
                 }
                 if (any_set) item.post = partial;
             },
-            .user => |cfg| {
+            .users => |cfg| {
                 var partial = Users.UsersPartial{};
                 var any_set = false;
 
@@ -678,16 +588,25 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
         }
         try sql.appendSlice(allocator, " ");
     } else {
-        try sql.appendSlice(allocator, "* ");
+        try sql.writer(allocator).print("{s}* ", .{table_name});
     }
 
     // FROM clause
     try sql.writer(allocator).print("FROM {s}", .{table_name});
 
-    // JOIN clauses
-    for (self.join_clauses.items) |join_sql| {
-        try sql.appendSlice(allocator, " ");
-        try sql.appendSlice(allocator, join_sql);
+    // Process join clause
+    if (self.join_clauses.items.len > 0) {
+        for (self.join_clauses.items) |join_clause| {
+            sql.writer(allocator).print("{s} {s} ON {s}.{s} {s} {s}.{s}", .{
+                join_clause.join_type.toSql(),
+                @tagName(join_clause.join_table),
+                @tagName(join_clause.join_field),
+                join_clause.join_field.toString(),
+                join_clause.join_operator.toSql(),
+                @tagName(join_clause.base_field),
+                join_clause.base_field.toString(),
+            });
+        }
     }
 
     var first_where = true;

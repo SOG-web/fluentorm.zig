@@ -4,13 +4,15 @@ const pg = @import("pg");
 
 const Executor = @import("executor.zig").Executor;
 const QueryBuilder = @import("query.zig").QueryBuilder;
+const Tables = @import("registry.zig").Tables;
+const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
 
 pub const Relationship = struct {
     name: []const u8,
     type: enum { hasOne, hasMany, belongsTo },
-    foreign_table: []const u8,
-    foreign_key: []const u8,
-    local_key: []const u8,
+    foreign_table: Tables,
+    foreign_key: TableFieldsUnion,
+    local_key: TableFieldsUnion,
 };
 
 /// Base Model provides common database operations for any model type

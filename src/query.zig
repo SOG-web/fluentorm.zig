@@ -59,6 +59,12 @@ pub const Operator = enum {
     }
 };
 
+pub const WhereValue = union(enum) {
+    string: []const u8,
+    integer: i64,
+    boolean: bool,
+};
+
 pub const WhereClauseType = enum {
     @"and",
     @"or",
@@ -148,8 +154,8 @@ pub fn select(self: anytype, comptime fields: anytype) void {
     for (fields) |field| {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
-            "{s}",
-            .{@tagName(field)},
+            "{s}.{s}",
+            .{ self.tablename, @tagName(field.field) },
         ) catch return;
         self.select_clauses.append(self.arena.allocator(), _field) catch return;
     }
@@ -159,6 +165,7 @@ pub fn distinct(self: anytype) void {
     self.distinct_enabled = true;
 }
 
+// TODO: Add support for aliases in return struct
 pub fn selectAggregate(
     self: anytype,
     comptime agg: AggregateType,
@@ -167,8 +174,8 @@ pub fn selectAggregate(
 ) void {
     const _field = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s}({s}) AS {s}",
-        .{ agg.toSql(), @tagName(field), alias },
+        "{s}({s}.{s}) AS {s}",
+        .{ agg.toSql(), self.tablename, @tagName(field), alias },
     ) catch return;
     self.select_clauses.append(self.arena.allocator(), _field) catch return;
 }
@@ -183,7 +190,7 @@ pub fn selectRaw(self: anytype, raw_sql: []const u8) void {
 }
 
 pub fn where(self: anytype, comptime clause: anytype) void {
-    const sql = buildWhereClauseSql(self, clause) catch return;
+    const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
         .clause_type = .@"and",
@@ -191,14 +198,14 @@ pub fn where(self: anytype, comptime clause: anytype) void {
 }
 
 pub fn orWhere(self: anytype, comptime clause: anytype) void {
-    const sql = buildWhereClauseSql(self, clause) catch return;
+    const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
         .clause_type = .@"or",
     }) catch return;
 }
 
-pub fn buildWhereClauseSql(self: anytype, comptime clause: anytype) ![]const u8 {
+pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) ![]const u8 {
     const op_str = clause.operator.toSql();
 
     // Handle IS NULL / IS NOT NULL which don't have a value
@@ -211,12 +218,21 @@ pub fn buildWhereClauseSql(self: anytype, comptime clause: anytype) ![]const u8 
     }
 
     // Handle standard operators
-    if (clause.value) |val| {
-        return try std.fmt.allocPrint(
-            self.arena.allocator(),
-            "{s} {s} {s}",
-            .{ @tagName(clause.field), op_str, val },
-        );
+    if (value) |val| {
+        const str = switch (val) {
+            .boolean, .integer => |b| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s} {s} {s}",
+                .{ @tagName(clause.field), op_str, b },
+            ),
+            .string => |s| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s} {s} '{s}'",
+                .{ @tagName(clause.field), op_str, s },
+            ),
+        };
+
+        return str;
     }
 
     return "";
@@ -225,25 +241,25 @@ pub fn buildWhereClauseSql(self: anytype, comptime clause: anytype) ![]const u8 
 pub fn whereBetween(
     self: anytype,
     comptime field: anytype,
-    low: []const u8,
-    high: []const u8,
+    low: WhereValue,
+    high: WhereValue,
     comptime valueType: InType,
 ) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
             self.arena.allocator(),
             "'{s}' AND '{s}'",
-            .{ low, high },
+            .{ low.string, high.string },
         ) catch return,
         .integer => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.integer, high.integer },
         ) catch return,
         .boolean => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.boolean, high.boolean },
         ) catch return,
     };
 
@@ -261,25 +277,25 @@ pub fn whereBetween(
 pub fn whereNotBetween(
     self: anytype,
     comptime field: anytype,
-    low: []const u8,
-    high: []const u8,
+    low: WhereValue,
+    high: WhereValue,
     comptime valueType: InType,
 ) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
             self.arena.allocator(),
             "'{s}' AND '{s}'",
-            .{ low, high },
+            .{ low.string, high.string },
         ) catch return,
         .integer => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.integer, high.integer },
         ) catch return,
         .boolean => std.fmt.allocPrint(
             self.arena.allocator(),
             "{s} AND {s}",
-            .{ low, high },
+            .{ low.boolean, high.boolean },
         ) catch return,
     };
     const sql = std.fmt.allocPrint(
@@ -293,30 +309,16 @@ pub fn whereNotBetween(
     }) catch return;
 }
 
-pub fn whereIn(
-    self: anytype,
-    comptime field: anytype,
-    values: []const []const u8,
-    comptime valueType: InType,
-) void {
+pub fn whereIn(self: anytype, comptime field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         values_str.appendSlice(self.arena.allocator(), val) catch return;
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         if (i < values.len - 1) {
             values_str.appendSlice(self.arena.allocator(), ", ") catch return;
         }
@@ -334,30 +336,14 @@ pub fn whereIn(
     }) catch return;
 }
 
-pub fn whereNotIn(
-    self: anytype,
-    comptime field: anytype,
-    values: []const []const u8,
-    comptime valueType: InType,
-) void {
+pub fn whereNotIn(self: anytype, comptime field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
         values_str.appendSlice(self.arena.allocator(), val) catch return;
-        switch (valueType) {
-            .string => {
-                values_str.append(self.arena.allocator(), '\'') catch return;
-            },
-            .integer => {},
-            .boolean => {},
-        }
+        values_str.append(self.arena.allocator(), '\'') catch return;
+
         if (i < values.len - 1) {
             values_str.appendSlice(self.arena.allocator(), ", ") catch return;
         }
@@ -454,31 +440,107 @@ pub fn whereSubquery(
     }) catch return;
 }
 
-// SELECT Customers.CustomerName, Orders.OrderDate
-// FROM Customers
-// LEFT JOIN Orders ON Customers.CustomerID = Orders.CustomerID;
+// SELECT
+//   users.*,
+//   wallets.id AS wallet_id,
+//   wallets.cash_balance AS wallet_cash_balance
+// FROM users
+// LEFT JOIN wallets ON users.id = wallets.user_id;
 
 pub fn join(self: anytype, comptime join_clause: JoinClause) void {
     comptime {
-        if (@tagName(join_clause.base_field) != self.tableName()) {
+        if (@tagName(join_clause.base_field) != self.tableName) {
             @compileError("Invalid join: base field does not belong to base table");
         }
     }
 
-    const sql = std.fmt.allocPrint(
-        self.arena.allocator(),
-        "{s} {s} ON {s}.{s} {s} {s}.{s}",
-        .{
-            join_clause.join_type.toSql(),
-            @tagName(join_clause.join_table),
-            @tagName(join_clause.join_field),
-            join_clause.join_field.toString(),
-            join_clause.join_operator.toSql(),
-            @tagName(join_clause.base_field),
-            join_clause.base_field.toString(),
-        },
-    ) catch return;
-    self.join_clauses.append(self.arena.allocator(), sql) catch return;
+    // const sql = std.fmt.allocPrint(
+    //     self.arena.allocator(),
+    //     "{s} {s} ON {s}.{s} {s} {s}.{s}",
+    //     .{
+    //         join_clause.join_type.toSql(),
+    //         @tagName(join_clause.join_table),
+    //         @tagName(join_clause.join_field),
+    //         join_clause.join_field.toString(),
+    //         join_clause.join_operator.toSql(),
+    //         @tagName(join_clause.base_field),
+    //         join_clause.base_field.toString(),
+    //     },
+    // ) catch return;
+    self.join_clauses.append(self.arena.allocator(), join_clause) catch return;
+}
+
+pub fn include(self: anytype, rel: anytype) void {
+    self.includes_clauses.append(self.arena.allocator(), rel);
+    // build include sql using inner join
+    const include_sql = try self.buildIncludeSql(rel);
+    self.join_clauses.append(self.arena.allocator(), include_sql);
+}
+
+// fn buildIncludeSql(_: *Self, rel: IncludeClauseInput) !JoinClause {
+//     const rel_tag = std.meta.activeTag(rel);
+//     const relation = Model.getRelation(rel_tag);
+
+//     // Default select: if user didn't specify any base select, keep base columns.
+//     // if (self.select_clauses.items.len == 0) {
+//     //     const base_star = try std.fmt.allocPrint(allocator, "jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
+//     //         @tagName(relation.foreign_table),
+//     //         @tagName(relation.foreign_table),
+//     //     });
+//     //     self.select_clauses.append(allocator, base_star) catch {};
+//     // }
+
+//     // Use LEFT JOIN to ensure we don't filter out comments that have no related record
+//     // (e.g. optional relations or soft-deleted parents)
+//     return JoinClause{
+//         .join_type = JoinType.left,
+//         .join_table = relation.foreign_table,
+//         .join_field = relation.foreign_key,
+//         .join_operator = .eq,
+//         .base_field = relation.local_key,
+//     };
+// }
+
+pub fn buildIncludeWhere(
+    allocator: std.mem.Allocator,
+    table: []const u8,
+    clause: anytype,
+    value: ?WhereValue,
+) ![]const u8 {
+    const op_str = clause.operator.toSql();
+
+    if (clause.operator == .is_null or clause.operator == .is_not_null) {
+        return try std.fmt.allocPrint(allocator, "{s}.{s} {s}", .{ table, @tagName(clause.field), op_str });
+    }
+
+    if (value) |val| {
+        const str = switch (val) {
+            .boolean, .integer => |b| try std.fmt.allocPrint(
+                allocator,
+                "{s}.{s} {s} {s}",
+                .{
+                    table,
+                    @tagName(clause.field),
+                    op_str,
+                    b,
+                },
+            ),
+            .string => |s| try std.fmt.allocPrint(
+                allocator,
+                "{s}.{s} {s} '{s}'",
+                .{
+                    table,
+                    @tagName(clause.field),
+                    op_str,
+                    s,
+                },
+            ),
+        };
+
+        return str;
+    }
+
+    return "";
 }
 
 pub fn groupBy(self: anytype, comptime fields: anytype) void {
