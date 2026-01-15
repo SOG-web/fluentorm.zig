@@ -25,7 +25,6 @@ pub fn main() !void {
     _ = user.include(.{
         .comments = .{
             .model_name = .comments,
-            .select = &.{ .id, .user_id, .content },
             .where = &.{
                 .{
                     .where_type = .@"and",
