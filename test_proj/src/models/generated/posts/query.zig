@@ -44,6 +44,7 @@ pub const WhereClause = struct {
     field: FieldEnum,
     operator: Operator,
     value: ?[]const u8 = null,
+    type: WhereClauseType = .@"and",
 };
 
 pub const OrderByClause = struct {

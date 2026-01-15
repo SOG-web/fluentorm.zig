@@ -30,8 +30,6 @@ const WhereValue = query.WhereValue;
 // Related models
 const Self = @This();
 
-const tablename = Model.tableName();
-
 // Fields
 arena: std.heap.ArenaAllocator,
 select_clauses: std.ArrayList([]const u8),
@@ -81,6 +79,10 @@ pub fn init() Self {
         .join_clauses = std.ArrayList(JoinClause){},
         .includes_clauses = std.ArrayList(IncludeClauseInput){},
     };
+}
+
+pub fn tablename(_: *Self) []const u8 {
+    return Model.tableName();
 }
 
 pub fn deinit(self: *Self) void {
@@ -317,32 +319,41 @@ pub fn include(self: *Self, rel: IncludeClauseInput) *Self {
 //   ON users.id = wallets.user_id
 //  AND wallets.is_active = true;
 
-fn buildIncludeSql(_: *Self, rel: IncludeClauseInput) !JoinClause {
+fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
     const rel_tag = std.meta.activeTag(rel);
     const relation = Model.getRelation(rel_tag);
 
-    // Default select: if user didn't specify any base select, keep base columns.
-    // if (self.select_clauses.items.len == 0) {
-    //     const base_star = try std.fmt.allocPrint(allocator, "jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
-    //         @tagName(relation.foreign_table),
-    //         @tagName(relation.foreign_table),
-    //     });
-    //     self.select_clauses.append(allocator, base_star) catch {};
-    // }
-
-    // Use LEFT JOIN to ensure we don't filter out comments that have no related record
-    // (e.g. optional relations or soft-deleted parents)
-    return JoinClause{
+    var clause = JoinClause{
         .join_type = JoinType.left,
         .join_table = relation.foreign_table,
         .join_field = relation.foreign_key,
         .join_operator = .eq,
         .base_field = relation.local_key,
+        .predicates = &.{},
+        .select = &.{"*"},
     };
-}
 
-fn buildIncludeWhere(allocator: std.mem.Allocator, table: []const u8, clause: WhereClause) ![]const u8 {
-    return query.buildIncludeWhere(allocator, table, clause, clause.value);
+    switch (rel) {
+        .posts, .users => |r| {
+            // Construct the where clause from rel into an sql string
+            if (r.where.len > 0) {
+                for (r.where, 0..) |cl, i| {
+                    const str = try query.buildIncludeWhere(self, cl, relation.foreign_table, cl.value);
+                    clause.predicates[i] = .{
+                        .where_type = cl.type,
+                        .sql = str,
+                    };
+                }
+            }
+
+            // Construct select clause
+            if (r.select.len > 0) {
+                for (r.select, 0..) |field, i| {
+                    clause.select[i] = @tagName(field);
+                }
+            }
+        },
+    }
 }
 
 fn hydrateIncludes(_: std.mem.Allocator, row: pg.Row, item: *Model, includes: []const IncludeClauseInput) !void {
@@ -565,12 +576,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     var sql = std.ArrayList(u8){};
     defer sql.deinit(allocator);
 
-    const table_name = Model.tableName();
-
-    // Ensure base model columns are present when user customized select
-    if (self.base_select_custom and self.fill_base_select) {
-        try ensureBaseSelects(self, allocator);
-    }
+    const table_name = self.tablename();
 
     // SELECT clause
     if (self.distinct_enabled) {
@@ -587,8 +593,46 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
             }
         }
         try sql.appendSlice(allocator, " ");
+    }
+
+    // build join clause selects
+    if (self.join_clauses.items.len > 0) {
+        try sql.writer(allocator).print("{s}.*, ", .{table_name});
+        for (self.join_clauses.items) |join_clause| {
+            if (join_clause.select.len == 1 and std.mem.eql(u8, join_clause.select[0], "*")) {
+                try sql.writer(allocator).print("jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
+                    @tagName(join_clause.join_table),
+                    @tagName(join_clause.join_table),
+                });
+                continue;
+            }
+
+            self.base_select_custom = true;
+
+            if (join_clause.select.len == 1 and !std.mem.eql(u8, join_clause.select[0], "*")) {
+                try sql.writer(allocator).print("{s}.{s} AS {s}_{s}", .{
+                    @tagName(join_clause.join_table),
+                    join_clause.select[0],
+                    @tagName(join_clause.join_table),
+                    join_clause.select[0],
+                });
+                continue;
+            }
+
+            for (join_clause.select, 0..) |sel, i| {
+                try sql.writer(allocator).print("{s}.{s} AS {s}_{s}", .{
+                    @tagName(join_clause.join_table),
+                    sel,
+                    @tagName(join_clause.join_table),
+                    sel,
+                });
+                if (i < join_clause.select.len - 1) {
+                    try sql.appendSlice(allocator, ", ");
+                }
+            }
+        }
     } else {
-        try sql.writer(allocator).print("{s}* ", .{table_name});
+        try sql.writer(allocator).print("{s}.* ", .{table_name});
     }
 
     // FROM clause
@@ -606,6 +650,76 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
                 @tagName(join_clause.base_field),
                 join_clause.base_field.toString(),
             });
+
+            // build predicates
+            // LEFT JOIN wallets
+            //   ON users.id = wallets.user_id
+            //  AND (wallets.wallet_type = 'cash' OR wallets.wallet_type = 'bonus')
+            //  AND wallets.is_active = true
+
+            // LEFT JOIN transactions
+            //   ON users.id = transactions.user_id
+            //  AND (transactions.status = 'completed' OR transactions.status = 'pending')
+            //  AND transactions.created_at >= now() - interval '30 days'
+
+            // WHERE users.is_active = true
+
+            // GROUP BY users.id;
+
+            if (join_clause.predicates.len > 0) {
+                var in_or_group = false;
+                for (join_clause.predicates, 0..) |predicate, i| {
+                    const next_is_or = (i < join_clause.predicates.len - 1 and join_clause.predicates[i + 1].where_type == .@"or");
+
+                    if (i == 0) {
+                        if (predicate.where_type == .@"or") {
+                            return error.FirstPredicateCannotBeOr;
+                        }
+
+                        try sql.appendSlice(allocator, " AND ");
+
+                        if (next_is_or) {
+                            try sql.appendSlice(allocator, "(");
+                            in_or_group = true;
+                        }
+
+                        try sql.appendSlice(allocator, predicate.sql);
+                        continue;
+                    }
+
+                    if (predicate.where_type == .@"and") {
+                        // Close OR group if we were in one
+                        if (in_or_group) {
+                            try sql.appendSlice(allocator, ")");
+                            in_or_group = false;
+                        }
+
+                        try sql.appendSlice(allocator, " AND ");
+
+                        // Open OR group if next is OR
+                        if (next_is_or) {
+                            try sql.appendSlice(allocator, "(");
+                            in_or_group = true;
+                        }
+
+                        try sql.appendSlice(allocator, predicate.sql);
+                    } else { // .@"or"
+                        try sql.appendSlice(allocator, " OR ");
+                        try sql.appendSlice(allocator, predicate.sql);
+
+                        // Close group if next is not OR
+                        if (!next_is_or and in_or_group) {
+                            try sql.appendSlice(allocator, ")");
+                            in_or_group = false;
+                        }
+                    }
+                }
+
+                // Close any remaining OR group
+                if (in_or_group) {
+                    try sql.appendSlice(allocator, ")");
+                }
+            }
         }
     }
 
@@ -679,35 +793,6 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     return sql.toOwnedSlice(allocator);
 }
 
-fn ensureBaseSelects(self: *Self, allocator: std.mem.Allocator) !void {
-    // Gather existing base selections (non-include aliases)
-    var present = std.AutoHashMap([]const u8, void).init(allocator);
-    defer present.deinit();
-
-    var base_entries = std.ArrayList([]const u8){};
-    defer base_entries.deinit(allocator);
-
-    for (self.select_clauses.items) |sel| {
-        // Skip include aliases (post__/user__)
-        if (std.mem.indexOf(u8, sel, "post__") != null or std.mem.indexOf(u8, sel, "user__") != null) {
-            continue;
-        }
-        // Normalize: strip table prefix if present
-        const dot = std.mem.indexOf(u8, sel, ".");
-        const key = if (dot) |idx| sel[idx + 1 ..] else sel;
-        present.put(key, {}) catch {};
-        base_entries.append(sel) catch {};
-    }
-
-    inline for (@typeInfo(FieldEnum).Enum.fields) |f| {
-        const fname = f.name;
-        if (!present.contains(fname)) {
-            const full = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ Model.tableName(), fname });
-            self.select_clauses.append(allocator, full) catch {};
-        }
-    }
-}
-
 /// Check if the query has custom projections that can't be mapped to the model type.
 /// This includes:
 /// - Aggregate functions (COUNT, SUM, etc.)
@@ -721,7 +806,7 @@ fn hasCustomProjection(self: *Self) bool {
     if (self.group_clauses.items.len > 0 or self.having_clauses.items.len > 0) return true;
 
     // Treat explicit raw selects as custom
-    if (self.select_raw) return true;
+    if (self.select_raw or self.base_select_custom) return true;
 
     return false;
 }
@@ -744,8 +829,6 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
     if (self.hasCustomProjection()) {
         return error.CustomProjectionNotSupported;
     }
-
-    self.fill_base_select = true; // ensure base selects are included
 
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);

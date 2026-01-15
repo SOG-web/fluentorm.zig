@@ -13,6 +13,13 @@ pub const JoinClause = struct {
     join_operator: Operator,
     join_type: JoinType = .left,
     join_table: Tables,
+    predicates: []PredicateClause = &.{},
+    select: [][]const u8 = &.{"*"},
+};
+
+pub const PredicateClause = struct {
+    where_type: WhereClauseType,
+    sql: []const u8,
 };
 
 const jc_exp = JoinClause{
@@ -21,6 +28,16 @@ const jc_exp = JoinClause{
     .join_table = .posts,
     .join_field = .{ .posts = .user_id },
     .join_operator = .eq,
+    .predicates = &.{
+        .{
+            .where_type = .@"and",
+            .sql = "posts.is_approved = true",
+        },
+        .{
+            .where_type = .@"or",
+            .sql = "posts.title LIKE '%zig%'",
+        },
+    },
 };
 
 pub const Operator = enum {
@@ -155,7 +172,7 @@ pub fn select(self: anytype, comptime fields: anytype) void {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
             "{s}.{s}",
-            .{ self.tablename, @tagName(field.field) },
+            .{ self.tablename(), @tagName(field.field) },
         ) catch return;
         self.select_clauses.append(self.arena.allocator(), _field) catch return;
     }
@@ -175,7 +192,7 @@ pub fn selectAggregate(
     const _field = std.fmt.allocPrint(
         self.arena.allocator(),
         "{s}({s}.{s}) AS {s}",
-        .{ agg.toSql(), self.tablename, @tagName(field), alias },
+        .{ agg.toSql(), self.tablename(), @tagName(field), alias },
     ) catch return;
     self.select_clauses.append(self.arena.allocator(), _field) catch return;
 }
@@ -212,8 +229,8 @@ pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) !
     if (clause.operator == .is_null or clause.operator == .is_not_null) {
         return try std.fmt.allocPrint(
             self.arena.allocator(),
-            "{s} {s}",
-            .{ @tagName(clause.field), op_str },
+            "{s}.{s} {s}",
+            .{ self.tablename(), @tagName(clause.field), op_str },
         );
     }
 
@@ -222,13 +239,13 @@ pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) !
         const str = switch (val) {
             .boolean, .integer => |b| try std.fmt.allocPrint(
                 self.arena.allocator(),
-                "{s} {s} {s}",
-                .{ @tagName(clause.field), op_str, b },
+                "{s}.{s} {s} {s}",
+                .{ self.tablename(), @tagName(clause.field), op_str, b },
             ),
             .string => |s| try std.fmt.allocPrint(
                 self.arena.allocator(),
-                "{s} {s} '{s}'",
-                .{ @tagName(clause.field), op_str, s },
+                "{s}.{s} {s} '{s}'",
+                .{ self.tablename(), @tagName(clause.field), op_str, s },
             ),
         };
 
@@ -265,8 +282,8 @@ pub fn whereBetween(
 
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} BETWEEN {s}",
-        .{ @tagName(field), str },
+        "{s}.{s} BETWEEN {s}",
+        .{ self.tablename(), @tagName(field), str },
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -300,8 +317,8 @@ pub fn whereNotBetween(
     };
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} NOT BETWEEN {s}",
-        .{ @tagName(field), str },
+        "{s}.{s} NOT BETWEEN {s}",
+        .{ self.tablename(), @tagName(field), str },
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -327,8 +344,8 @@ pub fn whereIn(self: anytype, comptime field: anytype, values: []const []const u
 
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} IN {s}",
-        .{ @tagName(field), values_str.items },
+        "{s}.{s} IN {s}",
+        .{ self.tablename(), @tagName(field), values_str.items },
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -352,8 +369,8 @@ pub fn whereNotIn(self: anytype, comptime field: anytype, values: []const []cons
 
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} NOT IN {s}",
-        .{ @tagName(field), values_str.items },
+        "{s}.{s} NOT IN {s}",
+        .{ self.tablename(), @tagName(field), values_str.items },
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -431,8 +448,8 @@ pub fn whereSubquery(
 ) void {
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} {s} ({s})",
-        .{ @tagName(field), operator.toSql(), subquery },
+        "{s}.{s} {s} ({s})",
+        .{ self.tablename(), @tagName(field), operator.toSql(), subquery },
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -449,27 +466,20 @@ pub fn whereSubquery(
 
 pub fn join(self: anytype, comptime join_clause: JoinClause) void {
     comptime {
-        if (@tagName(join_clause.base_field) != self.tableName) {
+        if (@tagName(join_clause.base_field) != self.tablename()) {
             @compileError("Invalid join: base field does not belong to base table");
         }
     }
-
-    // const sql = std.fmt.allocPrint(
-    //     self.arena.allocator(),
-    //     "{s} {s} ON {s}.{s} {s} {s}.{s}",
-    //     .{
-    //         join_clause.join_type.toSql(),
-    //         @tagName(join_clause.join_table),
-    //         @tagName(join_clause.join_field),
-    //         join_clause.join_field.toString(),
-    //         join_clause.join_operator.toSql(),
-    //         @tagName(join_clause.base_field),
-    //         join_clause.base_field.toString(),
-    //     },
-    // ) catch return;
     self.join_clauses.append(self.arena.allocator(), join_clause) catch return;
 }
 
+// SELECT
+//   users.*,
+//   jsonb_strip_nulls(to_jsonb(wallets)) AS wallet
+// FROM users
+// LEFT JOIN wallets
+//   ON users.id = wallets.user_id
+//  AND wallets.is_active = true;
 pub fn include(self: anytype, rel: anytype) void {
     self.includes_clauses.append(self.arena.allocator(), rel);
     // build include sql using inner join
@@ -477,63 +487,30 @@ pub fn include(self: anytype, rel: anytype) void {
     self.join_clauses.append(self.arena.allocator(), include_sql);
 }
 
-// fn buildIncludeSql(_: *Self, rel: IncludeClauseInput) !JoinClause {
-//     const rel_tag = std.meta.activeTag(rel);
-//     const relation = Model.getRelation(rel_tag);
-
-//     // Default select: if user didn't specify any base select, keep base columns.
-//     // if (self.select_clauses.items.len == 0) {
-//     //     const base_star = try std.fmt.allocPrint(allocator, "jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
-//     //         @tagName(relation.foreign_table),
-//     //         @tagName(relation.foreign_table),
-//     //     });
-//     //     self.select_clauses.append(allocator, base_star) catch {};
-//     // }
-
-//     // Use LEFT JOIN to ensure we don't filter out comments that have no related record
-//     // (e.g. optional relations or soft-deleted parents)
-//     return JoinClause{
-//         .join_type = JoinType.left,
-//         .join_table = relation.foreign_table,
-//         .join_field = relation.foreign_key,
-//         .join_operator = .eq,
-//         .base_field = relation.local_key,
-//     };
-// }
-
-pub fn buildIncludeWhere(
-    allocator: std.mem.Allocator,
-    table: []const u8,
-    clause: anytype,
-    value: ?WhereValue,
-) ![]const u8 {
+pub fn buildIncludeWhere(self: anytype, clause: anytype, table: []const u8, value: ?WhereValue) ![]const u8 {
     const op_str = clause.operator.toSql();
 
+    // Handle IS NULL / IS NOT NULL which don't have a value
     if (clause.operator == .is_null or clause.operator == .is_not_null) {
-        return try std.fmt.allocPrint(allocator, "{s}.{s} {s}", .{ table, @tagName(clause.field), op_str });
+        return try std.fmt.allocPrint(
+            self.arena.allocator(),
+            "{s}.{s} {s}",
+            .{ table, @tagName(clause.field), op_str },
+        );
     }
 
+    // Handle standard operators
     if (value) |val| {
         const str = switch (val) {
             .boolean, .integer => |b| try std.fmt.allocPrint(
-                allocator,
+                self.arena.allocator(),
                 "{s}.{s} {s} {s}",
-                .{
-                    table,
-                    @tagName(clause.field),
-                    op_str,
-                    b,
-                },
+                .{ table, @tagName(clause.field), op_str, b },
             ),
             .string => |s| try std.fmt.allocPrint(
-                allocator,
+                self.arena.allocator(),
                 "{s}.{s} {s} '{s}'",
-                .{
-                    table,
-                    @tagName(clause.field),
-                    op_str,
-                    s,
-                },
+                .{ table, @tagName(clause.field), op_str, s },
             ),
         };
 
@@ -547,8 +524,8 @@ pub fn groupBy(self: anytype, comptime fields: anytype) void {
     for (fields) |field| {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
-            "{s}",
-            .{@tagName(field)},
+            "{s}.{s}",
+            .{ self.tablename(), @tagName(field) },
         ) catch return;
         self.group_clauses.append(self.arena.allocator(), _field) catch return;
     }
@@ -581,8 +558,8 @@ pub fn havingAggregate(
 ) void {
     const _cond = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s}({s}) {s} {s}",
-        .{ agg.toSql(), @tagName(field), operator.toSql(), value },
+        "{s}({s}.{s}) {s} {s}",
+        .{ agg.toSql(), self.tablename(), @tagName(field), operator.toSql(), value },
     ) catch return;
     self.having_clauses.append(self.arena.allocator(), _cond) catch return;
 }
@@ -591,8 +568,8 @@ pub fn orderBy(self: anytype, comptime clause: anytype) void {
     const direction_str = clause.toSql();
     const _clause = std.fmt.allocPrint(
         self.arena.allocator(),
-        "{s} {s}",
-        .{ @tagName(clause.field), direction_str },
+        "{s}.{s} {s}",
+        .{ self.tablename(), @tagName(clause.field), direction_str },
     ) catch return;
     self.order_clauses.append(self.arena.allocator(), _clause) catch return;
 }
