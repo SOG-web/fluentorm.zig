@@ -28,10 +28,6 @@ const Posts = @This();
     created_at: i64,
     updated_at: i64,
     deleted_at: ?i64,
-
-    // Relationships (for eager loading)
-    user: ?Users.UsersPartial = null,
-    comments: ?[]const Comments.CommentsPartial = null,
     pub const FieldEnum = enum {
         id,
         title,
@@ -43,20 +39,6 @@ const Posts = @This();
         updated_at,
         deleted_at,
     };
-    pub fn toPartial(self: @This()) !PostsPartial {
-        return PostsPartial{
-            .id = self.id,
-            .title = self.title,
-            .content = self.content,
-            .user_id = self.user_id,
-            .is_published = self.is_published,
-            .view_count = self.view_count,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-            .deleted_at = self.deleted_at,
-        };
-    }
-
     pub const RelationEnum = enum {
         user,
         comments,
@@ -85,18 +67,6 @@ const Posts = @This();
         user: UsersIncludeClauseInput,
         comments: CommentsIncludeClauseInput,
     };
-
-pub const PostsPartial = struct {
-    id: ?[]const u8 = null,
-    title: ?[]const u8 = null,
-    content: ?[]const u8 = null,
-    user_id: ?[]const u8 = null,
-    is_published: ?bool = null,
-    view_count: ?i32 = null,
-    created_at: ?i64 = null,
-    updated_at: ?i64 = null,
-    deleted_at: ?i64 = null,
-};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);

@@ -90,51 +90,12 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         try writer.print("    {s}: {s},\n", .{ field.name, field.type.toZigType() });
     }
 
-    try writer.writeAll("\n    // Relationships (for eager loading)\n");
-
-    // hasOne / belongsTo
-    for (schema.relationships.items) |rel| {
-        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
-        const field_name = try utils.relationshipToFieldName(allocator, rel);
-        defer allocator.free(field_name);
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
-        defer allocator.free(type_name);
-
-        try writer.print("    {s}: ?{s}.{s}Partial = null,\n", .{ field_name, type_name, type_name });
-    }
-
-    // hasMany
-    for (schema.has_many_relationships.items) |rel| {
-        if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
-        const field_name = try utils.hasManyMethodName(allocator, rel.name); // Using relation name (key) in config
-        defer allocator.free(field_name);
-
-        // Convert field_name from PascalCase to camelCase (e.g. Posts -> posts)
-        var camel_field = try allocator.dupe(u8, field_name);
-        defer allocator.free(camel_field);
-        if (camel_field.len > 0) camel_field[0] = std.ascii.toLower(camel_field[0]);
-
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
-        defer allocator.free(type_name);
-
-        try writer.print("    {s}: ?[]const {s}.{s}Partial = null,\n", .{ camel_field, type_name, type_name });
-    }
-
     // generate field enum
     try writer.writeAll("    pub const FieldEnum = enum {\n");
     for (fields) |field| {
         try writer.print("        {s},\n", .{field.name});
     }
     try writer.writeAll("    };\n");
-
-    // Generate toPartial method
-    try writer.print("    pub fn toPartial(self: @This()) !{s}Partial {{\n", .{struct_name});
-    try writer.print("        return {s}Partial{{\n", .{struct_name});
-    for (fields) |field| {
-        try writer.print("            .{s} = self.{s},\n", .{ field.name, field.name });
-    }
-    try writer.writeAll("        };\n");
-    try writer.writeAll("    }\n\n");
 
     try writer.writeAll("    pub const RelationEnum = enum {\n");
 
@@ -260,21 +221,6 @@ pub fn generateDeinit(writer: anytype, fields: []const Field, allocator: std.mem
     }
 
     try writer.writeAll("    }\n\n");
-}
-
-pub fn generatePartialStruct(writer: anytype, struct_name: []const u8, fields: []const Field) !void {
-    try writer.print("pub const {s}Partial = struct {{\n", .{struct_name});
-    for (fields) |field| {
-        // All fields are optional and default to null in the partial struct
-        const zig_type = field.type.toZigType();
-        // If type is already optional, use it as is but still init to null
-        if (field.type.isOptional()) {
-            try writer.print("    {s}: {s} = null,\n", .{ field.name, zig_type });
-        } else {
-            try writer.print("    {s}: ?{s} = null,\n", .{ field.name, zig_type });
-        }
-    }
-    try writer.writeAll("};\n\n");
 }
 
 pub fn generateCreateInput(writer: anytype, fields: []const Field, allocator: std.mem.Allocator) !void {

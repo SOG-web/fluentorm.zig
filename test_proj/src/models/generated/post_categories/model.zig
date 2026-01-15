@@ -23,25 +23,12 @@ const PostCategories = @This();
     post_id: []const u8,
     category_id: []const u8,
     created_at: i64,
-
-    // Relationships (for eager loading)
-    post: ?Posts.PostsPartial = null,
-    category: ?Categories.CategoriesPartial = null,
     pub const FieldEnum = enum {
         id,
         post_id,
         category_id,
         created_at,
     };
-    pub fn toPartial(self: @This()) !PostCategoriesPartial {
-        return PostCategoriesPartial{
-            .id = self.id,
-            .post_id = self.post_id,
-            .category_id = self.category_id,
-            .created_at = self.created_at,
-        };
-    }
-
     pub const RelationEnum = enum {
         post,
         category,
@@ -70,13 +57,6 @@ const PostCategories = @This();
         post: PostsIncludeClauseInput,
         category: CategoriesIncludeClauseInput,
     };
-
-pub const PostCategoriesPartial = struct {
-    id: ?[]const u8 = null,
-    post_id: ?[]const u8 = null,
-    category_id: ?[]const u8 = null,
-    created_at: ?i64 = null,
-};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);

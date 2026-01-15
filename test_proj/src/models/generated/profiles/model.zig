@@ -26,9 +26,6 @@ const Profiles = @This();
     date_of_birth: ?i64,
     created_at: i64,
     updated_at: i64,
-
-    // Relationships (for eager loading)
-    user: ?Users.UsersPartial = null,
     pub const FieldEnum = enum {
         id,
         user_id,
@@ -40,20 +37,6 @@ const Profiles = @This();
         created_at,
         updated_at,
     };
-    pub fn toPartial(self: @This()) !ProfilesPartial {
-        return ProfilesPartial{
-            .id = self.id,
-            .user_id = self.user_id,
-            .bio = self.bio,
-            .avatar_url = self.avatar_url,
-            .website = self.website,
-            .location = self.location,
-            .date_of_birth = self.date_of_birth,
-            .created_at = self.created_at,
-            .updated_at = self.updated_at,
-        };
-    }
-
     pub const RelationEnum = enum {
         user,
     };
@@ -73,18 +56,6 @@ const Profiles = @This();
     pub const IncludeClauseInput = union(RelationEnum) {
         user: UsersIncludeClauseInput,
     };
-
-pub const ProfilesPartial = struct {
-    id: ?[]const u8 = null,
-    user_id: ?[]const u8 = null,
-    bio: ?[]const u8 = null,
-    avatar_url: ?[]const u8 = null,
-    website: ?[]const u8 = null,
-    location: ?[]const u8 = null,
-    date_of_birth: ?i64 = null,
-    created_at: ?i64 = null,
-    updated_at: ?i64 = null,
-};
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);

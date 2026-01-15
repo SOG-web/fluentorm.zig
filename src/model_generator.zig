@@ -164,9 +164,6 @@ fn generateModelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_n
     // Generate struct definition (Strict)
     try model.generateStructDefinition(writer, schema, struct_name, final_fields, allocator);
 
-    // Generate Partial Struct (New)
-    try model.generatePartialStruct(writer, struct_name, final_fields);
-
     // Generate Deinit
     try model.generateDeinit(writer, final_fields, allocator);
 
