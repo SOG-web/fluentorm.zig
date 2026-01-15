@@ -82,7 +82,7 @@ var query = Users.query();
 defer query.deinit();
 
 const users = try query
-    .where(.{ .field = .email, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
     .fetch(Executor.fromPool(pool), allocator, .{"alice@example.com"});
 defer allocator.free(users);
 ```

@@ -22,7 +22,7 @@ const user_id = try Users.insert(tx.executor(), allocator, .{
 // Query within the same transaction
 var query = Users.query();
 const user = try query
-    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
     .first(tx.executor(), allocator, .{user_id});
 
 // Operations on different models
@@ -202,7 +202,7 @@ var query = Users.query();
 defer query.deinit();
 
 const user = try query
-    .where(.{ .field = .id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
     .first(tx.executor(), allocator, .{user_id});
 
 if (user == null) {
