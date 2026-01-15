@@ -581,10 +581,11 @@ pub fn generateCRUDWrappers(writer: anytype, struct_name: []const u8, has_upsert
         \\
         \\    pub const fromRow = base.fromRow;
         \\
-        \\    pub const query = Query.init();
+        \\    pub const query = Query.init;
         \\
-        \\    // Relation types for eager loading (use with fetchAs)
-        \\    pub const Rel = @import("rel.zig");
+        \\    pub const queryWithArena = Query.initWithArena;
+        \\
+        \\    pub const queryWithAllocator = Query.initWithAllocator;
         \\
         \\
     );

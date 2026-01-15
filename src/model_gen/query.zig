@@ -153,9 +153,33 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\    return Model.tableName();
         \\ }
         \\
+        \\ /// Create a new query builder using page_allocator for its arena.
         \\ pub fn init() Self {
+        \\    return initWithAllocator(std.heap.page_allocator);
+        \\ }
+        \\
+        \\ /// Create a query builder with a custom backing allocator for its arena.
+        \\ pub fn initWithAllocator(backing_allocator: std.mem.Allocator) Self {
         \\    return Self{
-        \\       .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
+        \\       .arena = std.heap.ArenaAllocator.init(backing_allocator),
+        \\       .select_clauses = std.ArrayList([]const u8){},
+        \\       .where_clauses = std.ArrayList(WhereClauseInternal){},
+        \\       .order_clauses = std.ArrayList([]const u8){},
+        \\       .group_clauses = std.ArrayList([]const u8){},
+        \\       .having_clauses = std.ArrayList([]const u8){},
+        \\       .join_clauses = std.ArrayList(JoinClause){},
+        \\       .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
+        \\       .base_select_custom = false,
+        \\       .select_raw = false,
+        \\       .fill_base_select = false,
+        \\    };
+        \\ }
+        \\
+        \\ /// Create a query builder using an existing ArenaAllocator.
+        \\ /// Ideal for http.zig request handlers where the arena is managed externally.
+        \\ pub fn initWithArena(arena_allocator: std.heap.ArenaAllocator) Self {
+        \\    return Self{
+        \\       .arena = arena_allocator,
         \\       .select_clauses = std.ArrayList([]const u8){},
         \\       .where_clauses = std.ArrayList(WhereClauseInternal){},
         \\       .order_clauses = std.ArrayList([]const u8){},

@@ -19,6 +19,48 @@ const users = try Users.query()
     .fetch(&pool, allocator, .{18});
 ```
 
+## Performance: Reusing Query Builders
+
+For better performance when executing multiple queries, reuse query builder instances with `reset()` instead of creating new ones:
+
+```zig
+// ✅ Efficient: reuse query builder
+var query = Users.query();
+defer query.deinit();
+
+// First query
+const active_users = try query
+    .where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } })
+    .fetch(&pool, allocator, .{});
+
+// Reset and reuse for second query (avoids re-allocating internal buffers)
+query.reset();
+
+const admins = try query
+    .where(.{ .field = .role, .operator = .eq, .value = .{ .string = "'admin'" } })
+    .fetch(&pool, allocator, .{});
+```
+
+```zig
+// ❌ Less efficient: creates new query builder each time
+for (user_ids) |id| {
+    var query = Users.query();  // allocates new buffers each iteration
+    defer query.deinit();
+    const user = try query.where(...).first(&pool, allocator, .{id});
+}
+
+// ✅ Better: reuse with reset
+var query = Users.query();
+defer query.deinit();
+for (user_ids) |id| {
+    const user = try query.where(...).first(&pool, allocator, .{id});
+    query.reset();  // reuse internal buffers
+}
+```
+
+> [!TIP]
+> The `reset()` method clears all query state (WHERE, ORDER BY, LIMIT, etc.) but keeps the internal arena allocator, avoiding repeated memory allocations.
+
 ## SELECT Methods
 
 ### `select(fields: []const Field)`

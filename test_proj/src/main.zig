@@ -12,7 +12,7 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var user = models.Users.query;
+    var user = models.Users.queryWithArena(arena);
     _ = user.select(&.{.id}).where(.{
         .field = .name,
         .operator = .eq,

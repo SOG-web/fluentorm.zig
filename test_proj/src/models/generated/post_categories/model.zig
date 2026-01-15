@@ -151,10 +151,11 @@ const PostCategories = @This();
 
     pub const fromRow = base.fromRow;
 
-    pub const query = Query.init();
+    pub const query = Query.init;
 
-    // Relation types for eager loading (use with fetchAs)
-    pub const Rel = @import("rel.zig");
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
