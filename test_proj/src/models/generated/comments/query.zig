@@ -843,6 +843,11 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 /// // results[0].posts is now parsed from JSONB!
 /// ```
 pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+     comptime {
+        if (!std.mem.eql(u8, R.fromRow, undefined)) {
+            @compileError("R must have fromRow method");
+        }
+    }
     return query.fetchWithRel(self, R, db, allocator, args);
 }
 
@@ -902,6 +907,11 @@ pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.A
 /// // user.?.posts is now parsed from JSONB!
 /// ```
 pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+     comptime {
+        if (!std.mem.eql(u8, R.fromRow, undefined)) {
+            @compileError("R must have fromRow method");
+        }
+    }
     return query.firstWithRel(self, R, db, allocator, args);
 }
 

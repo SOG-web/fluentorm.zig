@@ -668,26 +668,7 @@ pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
     return items.toOwnedSlice(allocator);
 }
 
-/// Fetch results using a relation type's fromRow() method for JSONB parsing.
-/// Use this when you have included relations that return JSONB columns.
-///
-/// The type R must have a `fromRow(row, allocator) !R` method.
-///
-/// Example:
-/// ```zig
-/// const UsersWithPosts = Users.Rel.UsersWithPosts;
-/// const results = try query
-///     .include(.{ .posts = .{} })
-///     .fetchWithRel(UsersWithPosts, db, allocator, .{});
-/// // results[0].posts is now parsed from JSONB!
-/// ```
-pub fn fetchWithRel(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
-    comptime {
-        if (!std.mem.eql(u8, R.fromRow, undefined)) {
-            @compileError("R must have fromRow method");
-        }
-    }
-
+pub fn fetchWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
 
@@ -732,11 +713,7 @@ pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
     return null;
 }
 
-/// Fetch first result using a relation type's fromRow() method for JSONB parsing.
-/// Use this when you have included relations that return JSONB columns.
-///
-/// The type R must have a `fromRow(row, allocator) !R` method.
-pub fn firstWithRel(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
