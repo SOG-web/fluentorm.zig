@@ -14,7 +14,7 @@ pub const JoinClause = struct {
     join_type: JoinType = .left,
     join_table: Tables,
     predicates: []PredicateClause = &.{},
-    select: [][]const u8 = &.{"*"},
+    select: []const []const u8 = &.{"*"},
 };
 
 pub const PredicateClause = struct {
@@ -172,7 +172,7 @@ pub fn select(self: anytype, fields: anytype) void {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
             "{s}.{s}",
-            .{ self.tablename(), @tagName(field.field) },
+            .{ self.tablename(), @tagName(field) },
         ) catch return;
         self.select_clauses.append(self.arena.allocator(), _field) catch return;
     }
@@ -237,10 +237,15 @@ pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) !
     // Handle standard operators
     if (value) |val| {
         const str = switch (val) {
-            .boolean, .integer => |b| try std.fmt.allocPrint(
+            .boolean => |b| try std.fmt.allocPrint(
                 self.arena.allocator(),
-                "{s}.{s} {s}",
-                .{ self.tablename(), @tagName(clause.field), b },
+                "{s}.{s} {s} {}",
+                .{ self.tablename(), @tagName(clause.field), op_str, b },
+            ),
+            .integer => |i| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s}.{s} {s} {d}",
+                .{ self.tablename(), @tagName(clause.field), op_str, i },
             ),
             .string => |s| try std.fmt.allocPrint(
                 self.arena.allocator(),
@@ -481,10 +486,10 @@ pub fn join(self: anytype, join_clause: JoinClause) void {
 //   ON users.id = wallets.user_id
 //  AND wallets.is_active = true;
 pub fn include(self: anytype, rel: anytype) void {
-    self.includes_clauses.append(self.arena.allocator(), rel);
+    self.includes_clauses.append(self.arena.allocator(), rel) catch return;
     // build include sql using inner join
-    const include_sql = try self.buildIncludeSql(rel);
-    self.join_clauses.append(self.arena.allocator(), include_sql);
+    const include_sql = self.buildIncludeSql(rel) catch return;
+    self.join_clauses.append(self.arena.allocator(), include_sql) catch return;
 }
 
 pub fn buildIncludeWhere(self: anytype, clause: anytype, table: []const u8, value: ?WhereValue) ![]const u8 {
@@ -502,10 +507,16 @@ pub fn buildIncludeWhere(self: anytype, clause: anytype, table: []const u8, valu
     // Handle standard operators
     if (value) |val| {
         const str = switch (val) {
-            .boolean, .integer => |b| try std.fmt.allocPrint(
+            .boolean,
+            => |b| try std.fmt.allocPrint(
                 self.arena.allocator(),
-                "{s}.{s} {s}",
-                .{ table, @tagName(clause.field), b },
+                "{s}.{s} {s} {}",
+                .{ table, @tagName(clause.field), op_str, b },
+            ),
+            .integer => |i| try std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s}.{s} {s} {d}",
+                .{ table, @tagName(clause.field), op_str, i },
             ),
             .string => |s| try std.fmt.allocPrint(
                 self.arena.allocator(),
@@ -531,7 +542,7 @@ pub fn groupBy(self: anytype, fields: anytype) void {
     }
 }
 
-pub fn groupByRaw(self: anytype, raw_sql: []const u8) void {
+pub fn groupByRaw(self: anytype, raw_sql: []const u8) !void {
     const _raw = std.fmt.allocPrint(
         self.arena.allocator(),
         "{s}",

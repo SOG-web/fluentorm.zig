@@ -25,6 +25,7 @@ pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std
         \\const BaseModel = @import("../base.zig").BaseModel;
         \\const Query = @import("query.zig");
         \\const Relationship = @import("../base.zig").Relationship;
+        \\const Tables = @import("../registry.zig").Tables;
         \\
     );
 
@@ -68,6 +69,10 @@ pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std
 
             // Import from sibling directory: @import("../users/model.zig")
             try writer.print("const {s} = @import(\"../{s}/model.zig\");\n", .{
+                struct_name,
+                dir_name,
+            });
+            try writer.print("const {s}Query = @import(\"../{s}/query.zig\");\n", .{
                 struct_name,
                 dir_name,
             });
@@ -162,16 +167,7 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         const field_name = try utils.relationshipToFieldName(allocator, rel);
         defer allocator.free(field_name);
 
-        // "foo" => .{ .name = "foo", .type = .belongsTo, ... }
-        try writer.print("            .{s} => .{{ .name = \"{s}\", .type = .belongsTo, .foreign_table = \"{s}\", .foreign_key = \"{s}\", .local_key = \"{s}\" }},\n", .{ field_name, field_name, rel.references_table, "id", rel.column });
-        // Note: belongsTo means WE have the foreign key (rel.column) pointing to THEIR "id".
-        // For include(), we collect OUR (local) key and query THEIR table where (foreign) key IN (...).
-        // BUT wait.
-        // belongsTo: Post.user_id -> User.id.
-        // Post.include(.user):
-        //   Collect post.user_id.
-        //   Query User where id IN (userIds).
-        // So foreign_table = "users", foreign_key = "id", local_key = "user_id".
+        try writer.print("            .{s} => .{{ .name = \"{s}\", .type = .belongsTo, .foreign_table = .{s}, .foreign_key = .{{ .{s} = .id }}, .local_key = .{{ .{s} = .{s} }} }},\n", .{ field_name, field_name, rel.references_table, rel.references_table, schema.name, rel.column });
     }
 
     for (schema.has_many_relationships.items) |rel| {
@@ -182,17 +178,43 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         defer allocator.free(camel);
         if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
 
-        // hasMany: User.id -> Post.user_id
-        // User.include(.posts):
-        //   Collect user.id.
-        //   Query Post where user_id IN (userIds).
-        // foreign_table = "posts" (rel.foreign_table), foreign_key = "user_id" (rel.foreign_column), local_key = "id".
-
-        try writer.print("            .{s} => .{{ .name = \"{s}\", .type = .hasMany, .foreign_table = \"{s}\", .foreign_key = \"{s}\", .local_key = \"{s}\" }},\n", .{ camel, camel, rel.foreign_table, rel.foreign_column, rel.local_column });
+        try writer.print("            .{s} => .{{ .name = \"{s}\", .type = .hasMany, .foreign_table = .{s}, .foreign_key = .{{ .{s} = .{s} }}, .local_key = .{{ .{s} = .{s} }} }},\n", .{ camel, camel, rel.foreign_table, rel.foreign_table, rel.foreign_column, schema.name, rel.local_column });
     }
 
     try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
+
+    for (schema.relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
+        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        defer allocator.free(type_name);
+
+        try writer.print(
+            \\    pub const {s}IncludeClauseInput = struct {{
+            \\        model_name: RelationEnum,
+            \\        select: []const {s}.FieldEnum = &.{{}},
+            \\        where: []const {s}Query.WhereClause = &.{{}},
+            \\    }};
+            \\
+            \\
+        , .{ type_name, type_name, type_name });
+    }
+
+    for (schema.has_many_relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
+        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        defer allocator.free(type_name);
+
+        try writer.print(
+            \\    pub const {s}IncludeClauseInput = struct {{
+            \\        model_name: RelationEnum,
+            \\        select: []const {s}.FieldEnum = &.{{}},
+            \\        where: []const {s}Query.WhereClause = &.{{}},
+            \\    }};
+            \\
+            \\
+        , .{ type_name, type_name, type_name });
+    }
 
     try writer.writeAll("    pub const IncludeClauseInput = union(RelationEnum) {\n");
 
@@ -203,7 +225,7 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
         defer allocator.free(type_name);
 
-        try writer.print("        {s}: {s}.IncludeClauseInput,\n", .{ field_name, type_name });
+        try writer.print("        {s}: {s}IncludeClauseInput,\n", .{ field_name, type_name });
     }
 
     for (schema.has_many_relationships.items) |rel| {
@@ -217,7 +239,7 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
         defer allocator.free(type_name);
 
-        try writer.print("        {s}: {s}.IncludeClauseInput,\n", .{ camel, type_name });
+        try writer.print("        {s}: {s}IncludeClauseInput,\n", .{ camel, type_name });
     }
     try writer.writeAll("    };\n\n");
 }

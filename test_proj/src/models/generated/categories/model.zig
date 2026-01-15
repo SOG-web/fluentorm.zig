@@ -8,9 +8,11 @@ const pg = @import("pg");
 const BaseModel = @import("../base.zig").BaseModel;
 const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
 const PostCategories = @import("../post_categories/model.zig");
+const PostCategoriesQuery = @import("../post_categories/query.zig");
 
 const Categories = @This();
 
@@ -58,9 +60,19 @@ const Categories = @This();
 
     pub fn getRelation(rel: RelationEnum) Relationship {
         return switch (rel) {
-            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = "post_categories", .foreign_key = "category_id", .local_key = "id" },
+            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = .post_categories, .foreign_key = .{ .post_categories = .category_id }, .local_key = .{ .categories = .id } },
         };
     }
+
+    pub const PostCategoriesIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const PostCategories.FieldEnum = &.{},
+        where: []const PostCategoriesQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        posts: PostCategoriesIncludeClauseInput,
+    };
 
 pub const CategoriesPartial = struct {
     id: ?[]const u8 = null,

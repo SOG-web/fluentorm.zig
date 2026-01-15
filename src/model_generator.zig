@@ -51,21 +51,19 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
         \\
     );
 
-    // Import all models and generate Repos
+    // Import all models
     for (schemas) |schema| {
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
         const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
         defer allocator.free(snake_case_name);
 
-        // Import the model module (folder)
         try writer.print("pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, snake_case_name });
     }
 
-    // Also import query for re-exporting if needed, or assume access via Client
     try writer.writeAll("\n");
 
-    // Generate Client struct (Stateless namespace)
+    // Generate Client struct
     try writer.writeAll(
         \\pub const Client = struct {
         \\    // Stateless client: simply acts as a namespace for models.
@@ -73,18 +71,52 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
         \\    // which supports both pool and transaction based execution.
         \\
     );
-
-    // Generate aliases for each model in Client
     for (schemas) |schema| {
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
+        const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
+        defer allocator.free(snake_case_name);
 
-        // Alias: pub const Users = @import("users/model.zig"); (implicitly via registry scope)
-        // But inside Client struct:
-        try writer.print("    pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, try utils.toLowerSnakeCase(allocator, schema.name) });
+        try writer.print("    pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, snake_case_name });
     }
-
     try writer.writeAll("};\n\n");
+
+    // Generate Tables enum
+    try writer.writeAll("pub const Tables = enum {\n");
+    for (schemas) |schema| {
+        try writer.print("    {s},\n", .{schema.name});
+    }
+    try writer.writeAll("};\n\n");
+
+    // Generate TableFields struct
+    try writer.writeAll("pub const TableFields = struct {\n");
+    for (schemas) |schema| {
+        const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
+        defer allocator.free(struct_name);
+        try writer.print("    {s}: {s}.FieldEnum,\n", .{ schema.name, struct_name });
+    }
+    try writer.writeAll("};\n\n");
+
+    // Generate TableFieldsUnion
+    try writer.writeAll("pub const TableFieldsUnion = union(Tables) {\n");
+    for (schemas) |schema| {
+        const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
+        defer allocator.free(struct_name);
+        try writer.print("    {s}: {s}.FieldEnum,\n", .{ schema.name, struct_name });
+    }
+    try writer.writeAll(
+        \\
+        \\    pub fn toString(self: @This()) []const u8 {
+        \\        return switch (self) {
+    );
+    for (schemas) |schema| {
+        try writer.print("            .{s} => |f| @tagName(f),\n", .{schema.name});
+    }
+    try writer.writeAll(
+        \\        };
+        \\    }
+        \\};
+    );
 
     try std.fs.cwd().writeFile(.{ .sub_path = file_name, .data = output.items });
 
@@ -97,10 +129,8 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     const root_writer = root_output.writer(allocator);
 
     try root_writer.writeAll("// AUTO-GENERATED CODE - DO NOT EDIT\n");
-    // Re-export Client
     try root_writer.writeAll("pub const Client = @import(\"registry.zig\").Client;\n\n");
 
-    // Re-export models directly as well?
     for (schemas) |schema| {
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
@@ -185,7 +215,7 @@ fn generateQueryFile(allocator: std.mem.Allocator, schema: TableSchema, schema_f
 
     try query.generateStructDefinition(writer);
 
-    try query.generatePubMethods(writer);
+    try query.generatePubMethods(writer, schema, allocator);
     try std.fs.cwd().writeFile(.{ .sub_path = file_name, .data = output.items });
     std.debug.print("    -> Created {s}/query.zig\n", .{output_dir});
 }

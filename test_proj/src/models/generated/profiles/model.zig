@@ -8,9 +8,11 @@ const pg = @import("pg");
 const BaseModel = @import("../base.zig").BaseModel;
 const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
 const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
 
 const Profiles = @This();
 
@@ -58,9 +60,19 @@ const Profiles = @This();
 
     pub fn getRelation(rel: RelationEnum) Relationship {
         return switch (rel) {
-            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = "users", .foreign_key = "id", .local_key = "user_id" },
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .profiles = .user_id } },
         };
     }
+
+    pub const UsersIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Users.FieldEnum = &.{},
+        where: []const UsersQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        user: UsersIncludeClauseInput,
+    };
 
 pub const ProfilesPartial = struct {
     id: ?[]const u8 = null,

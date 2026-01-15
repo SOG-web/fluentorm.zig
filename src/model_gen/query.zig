@@ -27,6 +27,9 @@ pub fn generateImports(writer: anytype, schema: TableSchema) !void {
         \\const BaseModel = @import("../base.zig").BaseModel;
         \\const Executor = @import("../executor.zig").Executor;
         \\const query = @import("../query.zig");
+        \\const JoinClause = query.JoinClause;
+        \\const WhereValue = query.WhereValue;
+        \\const IncludeClauseInput = Model.IncludeClauseInput;
         \\const Operator = query.Operator;
         \\const WhereClauseType = query.WhereClauseType;
         \\const WhereClauseInternal = query.WhereClauseInternal;
@@ -101,7 +104,7 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\ order_clauses: std.ArrayList([]const u8),
         \\ group_clauses: std.ArrayList([]const u8),
         \\ having_clauses: std.ArrayList([]const u8),
-        \\ join_clauses: std.ArrayList([]const u8),
+        \\ join_clauses: std.ArrayList(JoinClause),
         \\ limit_val: ?u64 = null,
         \\ offset_val: ?u64 = null,
         \\ include_deleted: bool = false,
@@ -118,9 +121,10 @@ pub fn generateStructDefinition(writer: anytype) !void {
     // clauses
     try writer.writeAll(
         \\  pub const WhereClause = struct {
+        \\      where_type: WhereClauseType = .@"and",
         \\      field: FieldEnum,
         \\      operator: Operator,
-        \\      value: ?[]const u8 = null,
+        \\      value: ?WhereValue = null,
         \\   };
         \\
         \\
@@ -145,6 +149,10 @@ pub fn generateStructDefinition(writer: anytype) !void {
 
     // init, deinit, reset
     try writer.writeAll(
+        \\ pub fn tablename(_: *Self) []const u8 {
+        \\    return Model.tableName();
+        \\ }
+        \\
         \\ pub fn init() Self {
         \\    return Self{
         \\       .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
@@ -153,7 +161,7 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\       .order_clauses = std.ArrayList([]const u8){},
         \\       .group_clauses = std.ArrayList([]const u8){},
         \\       .having_clauses = std.ArrayList([]const u8){},
-        \\       .join_clauses = std.ArrayList([]const u8){},
+        \\       .join_clauses = std.ArrayList(JoinClause){},
         \\       .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
         \\       .base_select_custom = false,
         \\       .select_raw = false,
@@ -193,7 +201,89 @@ pub fn generateStructDefinition(writer: anytype) !void {
     try writer.writeAll("\n");
 }
 
-pub fn generatePubMethods(writer: anytype) !void {
+pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator) !void {
+    try writer.writeAll(
+        \\    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
+        \\        const rel_tag = std.meta.activeTag(rel);
+        \\        const relation = Model.getRelation(rel_tag);
+        \\
+        \\        var clause = JoinClause{
+        \\            .join_type = JoinType.left,
+        \\            .join_table = relation.foreign_table,
+        \\            .join_field = relation.foreign_key,
+        \\            .join_operator = .eq,
+        \\            .base_field = relation.local_key,
+        \\            .predicates = &.{},
+        \\            .select = &.{"*"},
+        \\        };
+        \\
+        \\        switch (rel) {
+    );
+
+    const body =
+        \\                // Construct the where clause from rel into an sql string
+        \\                if (r.where.len > 0) {
+        \\                    clause.predicates = try self.arena.allocator().alloc(query.PredicateClause, r.where.len);
+        \\                    for (r.where, 0..) |cl, i| {
+        \\                        const str = try query.buildIncludeWhere(self, cl, @tagName(relation.foreign_table), cl.value);
+        \\                        clause.predicates[i] = .{
+        \\                            .where_type = cl.where_type,
+        \\                            .sql = str,
+        \\                        };
+        \\                    }
+        \\                }
+        \\
+        \\                // Construct select clause
+        \\                if (r.select.len > 0) {
+        \\                    const selects = try self.arena.allocator().alloc([]const u8, r.select.len);
+        \\                    for (r.select, 0..) |field, i| {
+        \\                        selects[i] = @tagName(field);
+        \\                    }
+        \\                    clause.select = selects;
+        \\                }
+    ;
+
+    var has_rels = false;
+
+    for (schema.relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
+        const field_name = try utils.relationshipToFieldName(allocator, rel);
+        defer allocator.free(field_name);
+
+        try writer.print("            .{s} => |r| {{\n", .{field_name});
+        try writer.writeAll(body);
+        try writer.writeAll("\n            },\n");
+        has_rels = true;
+    }
+
+    for (schema.has_many_relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
+        const field_name = try utils.hasManyMethodName(allocator, rel.name);
+        defer allocator.free(field_name);
+        var camel = try allocator.dupe(u8, field_name);
+        defer allocator.free(camel);
+        if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
+
+        try writer.print("            .{s} => |r| {{\n", .{camel});
+        try writer.writeAll(body);
+        try writer.writeAll("\n            },\n");
+        has_rels = true;
+    }
+
+    if (!has_rels) {
+        try writer.writeAll("            else => {},\n");
+    }
+
+    try writer.writeAll(
+        \\        }
+        \\        return clause;
+        \\    }
+        \\
+    );
+}
+
+pub fn generatePubMethods(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator) !void {
+    try generateBuildIncludeSql(writer, schema, allocator);
     const query_text = @embedFile("query.txt");
     try writer.writeAll(query_text);
 }

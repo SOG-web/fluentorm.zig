@@ -49,8 +49,7 @@ pub const TableFieldsUnion = union(Tables) {
     comments: Comments.FieldEnum,
 
     pub fn toString(self: @This()) []const u8 {
-        return switch (self) {
-            .users => |f| @tagName(f),
+        return switch (self) {            .users => |f| @tagName(f),
             .posts => |f| @tagName(f),
             .profiles => |f| @tagName(f),
             .categories => |f| @tagName(f),

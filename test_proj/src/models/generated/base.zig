@@ -3,7 +3,6 @@ const std = @import("std");
 const pg = @import("pg");
 
 const Executor = @import("executor.zig").Executor;
-const QueryBuilder = @import("query.zig").QueryBuilder;
 const Tables = @import("registry.zig").Tables;
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
 
