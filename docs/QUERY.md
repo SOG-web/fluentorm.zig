@@ -169,44 +169,19 @@ Adds a subquery in WHERE clause.
 
 ## JOIN Methods
 
-### `join(join_type: JoinType, table: []const u8, on_clause: []const u8)`
+### `join(comptime join_clause: JoinClause)`
 
 Adds a JOIN clause.
 
 ```zig
-.join(.inner, "posts", "users.id = posts.user_id")
-```
-
-### `innerJoin(table: []const u8, on_clause: []const u8)`
-
-Adds an INNER JOIN clause.
-
-```zig
-.innerJoin("posts", "users.id = posts.user_id")
-```
-
-### `leftJoin(table: []const u8, on_clause: []const u8)`
-
-Adds a LEFT JOIN clause.
-
-```zig
-.leftJoin("posts", "users.id = posts.user_id")
-```
-
-### `rightJoin(table: []const u8, on_clause: []const u8)`
-
-Adds a RIGHT JOIN clause.
-
-```zig
-.rightJoin("posts", "users.id = posts.user_id")
-```
-
-### `fullJoin(table: []const u8, on_clause: []const u8)`
-
-Adds a FULL OUTER JOIN clause.
-
-```zig
-.fullJoin("orders", "users.id = orders.user_id")
+.join(.{
+    .join_type = .inner,
+    .join_table = .posts,
+    .join_field = .{ .posts = .user_id },
+    .join_operator = .eq,
+    .base_field = .{ .users = .id },
+    .select = &.{ "title", "created_at" }
+})
 ```
 
 ## Include Methods (Eager Loading)
@@ -218,8 +193,10 @@ Eagerly loads related models using LEFT JOINs. This allows you to filter and sel
 ```zig
 .include(.{
     .comments = .{
+        .model_name = .comments,
         .select = &.{ .id, .content },
         .where = &.{.{
+            .where_type = .@"and",
             .field = .content,
             .operator = .like,
             .value = .{ .string = "%zig%" }
@@ -229,7 +206,7 @@ Eagerly loads related models using LEFT JOINs. This allows you to filter and sel
 ```
 
 > [!NOTE]
-> Using `include` adds JOINs to the query, so you must use `fetchAs` or `fetchRaw` to retrieve the results, as the standard `fetch` method only maps to the base model.
+> Using `include` adds JOINs to the query, so you must use `fetchAs` or `fetchRaw` or `firstAs` to retrieve the results, as the standard `fetch` method only maps to the base model.
 
 ## GROUP BY / HAVING Methods
 
@@ -338,12 +315,15 @@ Executes the query and returns a slice of models.
 
 > [!IMPORTANT] > `fetch` will return `error.CustomProjectionRequiresFetchAs` if your query contains any of the following:
 >
+> Work is still been done oon the library, implicit type generation will be included in the future
+>
 > - **JOINs** (`innerJoin`, `leftJoin`, `rightJoin`, `fullJoin`)
 > - **GROUP BY** clauses (`groupBy`, `groupByRaw`)
 > - **HAVING** clauses (`having`, `havingAggregate`)
 > - **Aggregate functions** (`selectAggregate`)
 > - **Raw selects with aliases** (e.g., `selectRaw("COUNT(*) AS total")`)
 > - **Table-prefixed columns** (e.g., `selectRaw("users.id")`)
+> - **Select columns** (e.g., `select(&.{.id, .name})`)
 >
 > For these cases, use `fetchAs` with a custom struct or `fetchRaw` for direct result access.
 
@@ -568,7 +548,13 @@ const results = try query
     .select(&.{.user_id})
     .selectAggregate(.sum, .amount, "total")
     .selectAggregate(.count, .id, "order_count")
-    .innerJoin("users", "orders.user_id = users.id")
+    .join(.{
+        .join_type = .inner,
+        .join_table = .users,
+        .join_field = .{ .users = .id },
+        .join_operator = .eq,
+        .base_field = .{ .orders = .user_id },
+    })
     .where(.{ .field = .status, .operator = .eq, .value = .{ .string = "'completed'" } })
     .whereBetween(.amount, .{ .integer = 10 }, .{ .integer = 10000 }, .integer)
     .groupBy(&.{.user_id})
@@ -602,7 +588,13 @@ For complex JOINs where you need to access columns from multiple tables:
 ```zig
 var result = try Users.query()
     .selectRaw("users.id, users.name, posts.title, posts.created_at")
-    .innerJoin("posts", "users.id = posts.user_id")
+    .join(.{
+        .join_type = .inner,
+        .join_table = .posts,
+        .join_field = .{ .posts = .user_id },
+        .join_operator = .eq,
+        .base_field = .{ .users = .id },
+    })
     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
     .fetchRaw(&pool, .{user_id});
 defer result.deinit();
