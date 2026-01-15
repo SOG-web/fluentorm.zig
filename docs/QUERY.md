@@ -396,6 +396,66 @@ Executes the query with `LIMIT 1` and returns the raw `pg.Result`, or `null` if 
 > [!NOTE]
 > The caller is responsible for calling `result.deinit()` when done.
 
+### `fetchWithRel(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) ![]R`
+
+Fetches results using a relation type's `fromRow()` method for parsing JSONB relation columns. Use this when you have included relations via `include()`.
+
+The type `R` must have a `fromRow(row: Row, allocator: Allocator) !R` method. The generated `rel.zig` types provide this automatically.
+
+> [!IMPORTANT]
+> `fetchWithRel` only works when `include()` does **not** have `.select` specified. The relation must be loaded as full JSONB (using `select: &.{"*"}` or omitting select entirely).
+
+```zig
+const Users = @import("models/generated/users/model.zig");
+
+// Access the generated relation type
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+
+var query = Users.query();
+defer query.deinit();
+
+const results = try query
+    .include(.{ .posts = .{} })
+    .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
+defer allocator.free(results);
+
+for (results) |user| {
+    std.debug.print("User: {s}\n", .{user.name});
+    // user.posts is parsed from JSONB!
+    if (user.posts) |posts| {
+        for (posts) |post| {
+            std.debug.print("  Post: {s}\n", .{post.title});
+        }
+    }
+}
+```
+
+> [!TIP]
+> Each model has a `Rel` namespace with explicit relation types that provide full IntelliSense support:
+> - `Users.Rel.UsersWithPosts` - User with posts loaded
+> - `Users.Rel.UsersWithComments` - User with comments loaded  
+> - `Users.Rel.UsersWithAllRelations` - User with all relations loaded
+
+### `firstWithRel(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) !?R`
+
+Same as `fetchWithRel` but returns only the first result or `null`.
+
+```zig
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+
+const user = try Users.query()
+    .include(.{ .posts = .{} })
+    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
+    .firstWithRel(UsersWithPosts, &pool, allocator, .{user_id});
+
+if (user) |u| {
+    std.debug.print("Found user {s} with {d} posts\n", .{
+        u.name, 
+        if (u.posts) |p| p.len else 0
+    });
+}
+```
+
 ### `count(db: *pg.Pool, args: anytype) !i64`
 
 Executes a `COUNT(*)` query based on the current filters.

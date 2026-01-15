@@ -10,6 +10,7 @@ A schema-first, type-safe ORM for Zig with PostgreSQL support. Define your datab
 - 🚧 **Database Migrations**: Built-in migration runner with checksum verification and transactional execution (multi-level rollback support is still in progress)
 - ✅ **Type-Safe Query Builder**: Fluent API for building SQL queries with compile-time field validation
 - ✅ **Relationship Support**: Define and query relationships (one-to-many, many-to-one, one-to-one)
+- ✅ **Eager Loading with IntelliSense**: Load relations via `include()` with full IDE autocomplete using explicit relation types
 - ✅ **Transaction Support**: Built-in transaction handling with rollback on error
 - ✅ **Soft Deletes**: Optional soft-delete functionality with `deleted_at` timestamps
 - ✅ **JSON Response Helpers**: Auto-generate JSON-safe response types with UUID conversion

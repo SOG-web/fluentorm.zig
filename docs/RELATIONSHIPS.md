@@ -475,6 +475,105 @@ defer allocator.free(user_posts);
 
 See [QUERY.md](QUERY.md) for more details on the query builder.
 
+## Explicit Relation Types (rel.zig)
+
+FluentORM generates explicit relation types in `rel.zig` for each model. These types provide **full IntelliSense support** for eager-loaded relations.
+
+### Generated Types
+
+For a model with relations, the generator creates:
+
+```
+src/models/generated/users/
+├── model.zig    # Base model
+├── rel.zig      # Relation types (UsersWithPosts, etc.)
+└── query.zig    # Query builder
+```
+
+Each `rel.zig` contains:
+
+| Type | Description |
+|------|-------------|
+| `UsersWithPosts` | User model with `posts: ?[]Posts` field |
+| `UsersWithComments` | User model with `comments: ?[]Comments` field |
+| `UsersWithAllRelations` | User model with all relation fields |
+
+### Accessing Relation Types
+
+Access via the model's `Rel` namespace:
+
+```zig
+const Users = @import("models/generated/users/model.zig");
+
+// Individual relation types
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+const UsersWithComments = Users.Rel.UsersWithComments;
+
+// All relations at once
+const UsersWithAllRelations = Users.Rel.UsersWithAllRelations;
+```
+
+Or via the registry:
+
+```zig
+const Client = @import("models/generated/registry.zig").Client;
+
+const UsersWithPosts = Client.Rel.Users.UsersWithPosts;
+```
+
+### Using with Eager Loading
+
+Use `fetchWithRel` or `firstWithRel` to load relations with automatic JSONB parsing:
+
+> [!IMPORTANT]
+> `fetchWithRel` only works when `include()` does **not** have `.select` specified. The relation must be loaded as full JSONB.
+
+```zig
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+
+var query = Users.query();
+defer query.deinit();
+
+// Eager load posts
+const users = try query
+    .include(.{ .posts = .{} })
+    .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
+defer allocator.free(users);
+
+for (users) |user| {
+    std.debug.print("User: {s}\n", .{user.name});
+    
+    // Full IntelliSense on user.posts!
+    if (user.posts) |posts| {
+        for (posts) |post| {
+            std.debug.print("  - {s}\n", .{post.title});
+        }
+    }
+}
+```
+
+### Helper Methods
+
+Each relation type provides:
+
+| Method | Description |
+|--------|-------------|
+| `fromBase(model)` | Convert base model to relation type (relations = null) |
+| `toBase(self)` | Extract base model from relation type |
+| `fromRow(row, allocator)` | Parse database row with JSONB relation columns |
+
+```zig
+// Convert base model to relation type
+const base_user = try Users.findById(&pool, allocator, id);
+var user_with_posts = UsersWithPosts.fromBase(base_user.?);
+
+// Manually set posts if needed
+user_with_posts.posts = some_posts;
+
+// Convert back to base model
+const base = user_with_posts.toBase();
+```
+
 ## Type Safety
 
 All relationship methods are fully type-safe:
