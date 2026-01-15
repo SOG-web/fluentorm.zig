@@ -90,16 +90,12 @@ pub const PostsIncludeClauseInput = struct {
     model_name: RelationEnum,
     select: []const Posts.FieldEnum,
     where: []const PostsQuery.WhereClause,
-    include_deleted: bool = false,
-    distinct_enabled: bool = false,
 };
 
 pub const UsersIncludeClauseInput = struct {
     model_name: RelationEnum,
     select: []const Users.FieldEnum,
     where: []const UsersQuery.WhereClause,
-    include_deleted: bool = false,
-    distinct_enabled: bool = false,
 };
 
 pub const IncludeClauseInput = union(RelationEnum) {

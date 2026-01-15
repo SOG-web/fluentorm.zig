@@ -167,7 +167,7 @@ pub fn reset(self: anytype) void {
     self.distinct_enabled = false;
 }
 
-pub fn select(self: anytype, comptime fields: anytype) void {
+pub fn select(self: anytype, fields: anytype) void {
     for (fields) |field| {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
@@ -185,8 +185,8 @@ pub fn distinct(self: anytype) void {
 // TODO: Add support for aliases in return struct
 pub fn selectAggregate(
     self: anytype,
-    comptime agg: AggregateType,
-    comptime field: anytype,
+    agg: AggregateType,
+    field: anytype,
     alias: []const u8,
 ) void {
     const _field = std.fmt.allocPrint(
@@ -206,7 +206,7 @@ pub fn selectRaw(self: anytype, raw_sql: []const u8) void {
     self.select_clauses.append(self.arena.allocator(), _raw) catch return;
 }
 
-pub fn where(self: anytype, comptime clause: anytype) void {
+pub fn where(self: anytype, clause: anytype) void {
     const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -214,7 +214,7 @@ pub fn where(self: anytype, comptime clause: anytype) void {
     }) catch return;
 }
 
-pub fn orWhere(self: anytype, comptime clause: anytype) void {
+pub fn orWhere(self: anytype, clause: anytype) void {
     const sql = buildWhereClauseSql(self, clause, clause.value) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -257,10 +257,10 @@ pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) !
 
 pub fn whereBetween(
     self: anytype,
-    comptime field: anytype,
+    field: anytype,
     low: WhereValue,
     high: WhereValue,
-    comptime valueType: InType,
+    valueType: InType,
 ) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
@@ -293,10 +293,10 @@ pub fn whereBetween(
 
 pub fn whereNotBetween(
     self: anytype,
-    comptime field: anytype,
+    field: anytype,
     low: WhereValue,
     high: WhereValue,
-    comptime valueType: InType,
+    valueType: InType,
 ) void {
     const str = switch (valueType) {
         .string => std.fmt.allocPrint(
@@ -326,7 +326,7 @@ pub fn whereNotBetween(
     }) catch return;
 }
 
-pub fn whereIn(self: anytype, comptime field: anytype, values: []const []const u8) void {
+pub fn whereIn(self: anytype, field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
@@ -353,7 +353,7 @@ pub fn whereIn(self: anytype, comptime field: anytype, values: []const []const u
     }) catch return;
 }
 
-pub fn whereNotIn(self: anytype, comptime field: anytype, values: []const []const u8) void {
+pub fn whereNotIn(self: anytype, field: anytype, values: []const []const u8) void {
     var values_str = std.ArrayList(u8){};
     values_str.appendSlice(self.arena.allocator(), "(") catch return;
     for (values, 0..) |val, i| {
@@ -402,14 +402,14 @@ pub fn orWhereRaw(self: anytype, raw_sql: []const u8) void {
     }) catch return;
 }
 
-pub fn whereNull(self: anytype, comptime field: anytype) void {
+pub fn whereNull(self: anytype, field: anytype) void {
     self.where(.{
         .field = field,
         .operator = .is_null,
     });
 }
 
-pub fn whereNotNull(self: anytype, comptime field: anytype) void {
+pub fn whereNotNull(self: anytype, field: anytype) void {
     self.where(.{
         .field = field,
         .operator = .is_not_null,
@@ -442,8 +442,8 @@ pub fn whereNotExists(self: anytype, subquery: []const u8) void {
 
 pub fn whereSubquery(
     self: anytype,
-    comptime field: anytype,
-    comptime operator: Operator,
+    field: anytype,
+    operator: Operator,
     subquery: []const u8,
 ) void {
     const sql = std.fmt.allocPrint(
@@ -464,8 +464,8 @@ pub fn whereSubquery(
 // FROM users
 // LEFT JOIN wallets ON users.id = wallets.user_id;
 
-pub fn join(self: anytype, comptime join_clause: JoinClause) void {
-    comptime {
+pub fn join(self: anytype, join_clause: JoinClause) void {
+    {
         if (@tagName(join_clause.base_field) != self.tablename()) {
             @compileError("Invalid join: base field does not belong to base table");
         }
@@ -520,7 +520,7 @@ pub fn buildIncludeWhere(self: anytype, clause: anytype, table: []const u8, valu
     return "";
 }
 
-pub fn groupBy(self: anytype, comptime fields: anytype) void {
+pub fn groupBy(self: anytype, fields: anytype) void {
     for (fields) |field| {
         const _field = std.fmt.allocPrint(
             self.arena.allocator(),
@@ -551,9 +551,9 @@ pub fn having(self: anytype, condition: []const u8) void {
 
 pub fn havingAggregate(
     self: anytype,
-    comptime agg: AggregateType,
-    comptime field: anytype,
-    comptime operator: Operator,
+    agg: AggregateType,
+    field: anytype,
+    operator: Operator,
     value: []const u8,
 ) void {
     const _cond = std.fmt.allocPrint(
@@ -564,7 +564,7 @@ pub fn havingAggregate(
     self.having_clauses.append(self.arena.allocator(), _cond) catch return;
 }
 
-pub fn orderBy(self: anytype, comptime clause: anytype) void {
+pub fn orderBy(self: anytype, clause: anytype) void {
     const direction_str = clause.toSql();
     const _clause = std.fmt.allocPrint(
         self.arena.allocator(),
@@ -638,7 +638,7 @@ pub fn hasCustomProjection(self: anytype) bool {
     return false;
 }
 
-pub fn fetchAs(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
 
@@ -666,7 +666,7 @@ pub fn fetchRaw(self: anytype, db: Executor, args: anytype) !pg.Result {
     });
 }
 
-pub fn firstAs(self: anytype, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
@@ -702,7 +702,7 @@ pub fn firstRaw(self: anytype, db: Executor, args: anytype) !?pg.Result {
     return null;
 }
 
-pub fn delete(self: anytype, db: Executor, args: anytype, comptime Model: type) !void {
+pub fn delete(self: anytype, db: Executor, args: anytype, Model: type) !void {
     const temp_allocator = self.arena.allocator();
     var comp_sql = std.ArrayList(u8){};
     defer comp_sql.deinit(temp_allocator);
@@ -732,7 +732,7 @@ pub fn delete(self: anytype, db: Executor, args: anytype, comptime Model: type) 
     defer result.deinit();
 }
 
-pub fn count(self: anytype, db: Executor, args: anytype, comptime Model: type) !i64 {
+pub fn count(self: anytype, db: Executor, args: anytype, Model: type) !i64 {
     const temp_allocator = self.arena.allocator();
 
     var sql = std.ArrayList(u8){};
@@ -776,12 +776,12 @@ pub fn count(self: anytype, db: Executor, args: anytype, comptime Model: type) !
     return 0;
 }
 
-pub fn exists(self: anytype, db: Executor, args: anytype, comptime Model: type) !bool {
+pub fn exists(self: anytype, db: Executor, args: anytype, Model: type) !bool {
     const c = try self.count(db, args, Model);
     return c > 0;
 }
 
-pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, comptime field: anytype, args: anytype, comptime Model: type) ![][]const u8 {
+pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: anytype, args: anytype, Model: type) ![][]const u8 {
     const temp_allocator = self.arena.allocator();
 
     var sql = std.ArrayList(u8){};
@@ -836,8 +836,8 @@ pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, comptime
     return items.toOwnedSlice(allocator);
 }
 
-pub fn aggregate(self: anytype, db: Executor, comptime agg: AggregateType, comptime field: anytype, args: anytype, comptime Model: type) !f64 {
-    // comptime {
+pub fn aggregate(self: anytype, db: Executor, agg: AggregateType, field: anytype, args: anytype, Model: type) !f64 {
+    // {
     //     if (agg != .count and !isNumericField(Model, field)) {
     //         @compileError("Aggregate requires numeric field");
     //     }
