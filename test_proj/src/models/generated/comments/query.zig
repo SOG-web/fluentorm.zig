@@ -356,105 +356,6 @@ fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
     }
 }
 
-fn hydrateIncludes(_: std.mem.Allocator, row: pg.Row, item: *Model, includes: []const IncludeClauseInput) !void {
-    for (includes) |rel| {
-        switch (rel) {
-            .posts => |cfg| {
-                var partial = Posts.PostsPartial{};
-                var any_set = false;
-
-                // check if the join key is null to bail out early (optional relation)
-                if (row.getCol(?[]const u8, "post__id") == null) {
-                    continue;
-                }
-
-                for (cfg.select) |field| {
-                    switch (field) {
-                        .id => {
-                            partial.id = row.getCol(?[]const u8, "post__id") orelse null;
-                        },
-                        .title => {
-                            partial.title = row.getCol(?[]const u8, "post__title") orelse null;
-                        },
-                        .content => {
-                            partial.content = row.getCol(?[]const u8, "post__content") orelse null;
-                        },
-                        .user_id => {
-                            partial.user_id = row.getCol(?[]const u8, "post__user_id") orelse null;
-                        },
-                        .is_published => {
-                            partial.is_published = row.getCol(?bool, "post__is_published") orelse null;
-                        },
-                        .view_count => {
-                            partial.view_count = row.getCol(?i32, "post__view_count") orelse null;
-                        },
-                        .created_at => {
-                            partial.created_at = row.getCol(?i64, "post__created_at") orelse null;
-                        },
-                        .updated_at => {
-                            partial.updated_at = row.getCol(?i64, "post__updated_at") orelse null;
-                        },
-                        .deleted_at => {
-                            partial.deleted_at = row.getCol(?i64, "post__deleted_at") orelse null;
-                        },
-                    }
-                    any_set = true;
-                }
-                if (any_set) item.post = partial;
-            },
-            .users => |cfg| {
-                var partial = Users.UsersPartial{};
-                var any_set = false;
-
-                // check if the join key is null to bail out early (optional relation)
-                if (row.getCol(?[]const u8, "user__id") == null) {
-                    continue;
-                }
-
-                for (cfg.select) |field| {
-                    switch (field) {
-                        .id => {
-                            partial.id = row.getCol(?[]const u8, "user__id") orelse null;
-                        },
-                        .email => {
-                            partial.email = row.getCol(?[]const u8, "user__email") orelse null;
-                        },
-                        .name => {
-                            partial.name = row.getCol(?[]const u8, "user__name") orelse null;
-                        },
-                        .bid => {
-                            partial.bid = row.getCol(?[]const u8, "user__bid") orelse null;
-                        },
-                        .password_hash => {
-                            partial.password_hash = row.getCol(?[]const u8, "user__password_hash") orelse null;
-                        },
-                        .is_active => {
-                            partial.is_active = row.getCol(?bool, "user__is_active") orelse null;
-                        },
-                        .created_at => {
-                            partial.created_at = row.getCol(?i64, "user__created_at") orelse null;
-                        },
-                        .updated_at => {
-                            partial.updated_at = row.getCol(?i64, "user__updated_at") orelse null;
-                        },
-                        .deleted_at => {
-                            partial.deleted_at = row.getCol(?i64, "user__deleted_at") orelse null;
-                        },
-                        .phone => {
-                            partial.phone = row.getCol(?[]const u8, "user__phone") orelse null;
-                        },
-                        .bio => {
-                            partial.bio = row.getCol(?[]const u8, "user__bio") orelse null;
-                        },
-                    }
-                    any_set = true;
-                }
-                if (any_set) item.user = partial;
-            },
-        }
-    }
-}
-
 /// Add GROUP BY clause
 ///
 /// Example:
@@ -842,10 +743,7 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
     defer items.deinit(allocator);
 
     while (try result.next()) |row| {
-        var item = try row.to(Model, .{ .allocator = allocator, .map = .name });
-        if (self.includes_clauses.items.len > 0) {
-            try hydrateIncludes(allocator, row, &item, self.includes_clauses.items);
-        }
+        const item = try row.to(Model, .{ .allocator = allocator, .map = .name });
         try items.append(allocator, item);
     }
 
@@ -873,9 +771,6 @@ pub fn fetchPartial(self: *Self, db: Executor, allocator: std.mem.Allocator, arg
 
     while (try result.next()) |row| {
         const partial = try row.to(Model.CommentsPartial, .{ .allocator = allocator, .map = .name });
-        if (self.includes_clauses.items.len > 0) {
-            try hydrateIncludes(allocator, row, &partial, self.includes_clauses.items);
-        }
         try items.append(allocator, partial);
     }
 
@@ -941,10 +836,7 @@ pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
     defer result.deinit();
 
     if (try result.next()) |row| {
-        var item = try row.to(Model, .{ .allocator = allocator, .map = .name });
-        if (self.includes_clauses.items.len > 0) {
-            try hydrateIncludes(allocator, row, &item, self.includes_clauses.items);
-        }
+        const item = try row.to(Model, .{ .allocator = allocator, .map = .name });
         return item;
     }
     return null;
@@ -965,10 +857,7 @@ pub fn firstPartial(self: *Self, db: Executor, allocator: std.mem.Allocator, arg
     defer result.deinit();
 
     if (try result.next()) |row| {
-        var partial = try row.to(Model.CommentsPartial, .{ .allocator = allocator, .map = .name });
-        if (self.includes_clauses.items.len > 0) {
-            try hydrateIncludes(allocator, row, &partial, self.includes_clauses.items);
-        }
+        const partial = try row.to(Model.CommentsPartial, .{ .allocator = allocator, .map = .name });
         return partial;
     }
     return null;
