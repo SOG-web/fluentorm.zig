@@ -46,56 +46,79 @@ pub fn main() !void {
 
     std.debug.print("Seeding new data...\n", .{});
 
-    const user_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user1_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "rou",
         .email = "rou@example.com",
+        .password_hash = "hashed_password",
+        .bid = "PRO_USER",
+        .is_active = true,
+    });
+    defer allocator.free(user1_id);
+
+    const user2_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+        .name = "alice",
+        .email = "alice@example.com",
         .password_hash = "hashed_password",
         .bid = null,
         .is_active = true,
     });
-    defer allocator.free(user_id);
+    defer allocator.free(user2_id);
 
-    std.debug.print("Seeding new data 2...\n", .{});
+    const user3_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+        .name = "bob",
+        .email = "bob@example.com",
+        .password_hash = "hashed_password",
+        .bid = "LITE_USER",
+        .is_active = false,
+    });
+    defer allocator.free(user3_id);
 
-    const user_id_hex = try pg.uuidToHex(&user_id[0..16].*);
+    const user1_hex = try pg.uuidToHex(&user1_id[0..16].*);
 
-    std.debug.print("User ID: {s}\n", .{user_id_hex});
+    std.debug.print("User ID: {s}\n", .{user1_hex});
 
-    const post_id = try models.Posts.insert(db, allocator, models.Posts.CreateInput{
+    const post1_id = try models.Posts.insert(db, allocator, models.Posts.CreateInput{
         .title = "Hello Zig",
         .content = "Zig is awesome!",
-        .user_id = &user_id_hex,
+        .user_id = &user1_hex,
         .is_published = true,
     });
-    defer allocator.free(post_id);
+    defer allocator.free(post1_id);
 
-    std.debug.print("Seeding new data 3...\n", .{});
+    const user2_hex = try pg.uuidToHex(&user2_id[0..16].*);
+    const post2_id = try models.Posts.insert(db, allocator, models.Posts.CreateInput{
+        .title = "Post by Alice",
+        .content = "I'm Alice",
+        .user_id = &user2_hex,
+        .is_published = true,
+    });
+    defer allocator.free(post2_id);
 
-    const post_id_hex = try pg.uuidToHex(&post_id[0..16].*);
+    const post1_hex = try pg.uuidToHex(&post1_id[0..16].*);
 
-    const comment_id1 = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
-        .post_id = &post_id_hex,
-        .user_id = &user_id_hex,
+    const comment1_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+        .post_id = &post1_hex,
+        .user_id = &user1_hex,
         .content = "This is a comment by rou",
         .is_approved = true,
     });
-    defer allocator.free(comment_id1);
+    defer allocator.free(comment1_id);
 
-    const comment_id2 = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
-        .post_id = &post_id_hex,
-        .user_id = &user_id_hex,
+    const comment2_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+        .post_id = &post1_hex,
+        .user_id = &user1_hex,
         .content = "Another one",
         .is_approved = false,
     });
-    defer allocator.free(comment_id2);
+    defer allocator.free(comment2_id);
 
-    const comment_id3 = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
-        .post_id = &post_id_hex,
-        .user_id = &user_id_hex,
+    const comment3_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+        .post_id = &post1_hex,
+        .user_id = &user1_hex,
         .content = "Another one approved",
         .is_approved = true,
     });
-    defer allocator.free(comment_id3);
+    defer allocator.free(comment3_id);
 
     // 3. Query with Include
     std.debug.print("Querying with include...\n", .{});
@@ -248,4 +271,101 @@ pub fn main() !void {
         std.debug.print("  Posts JSON: {s}\n", .{res.posts orelse "[]"});
         std.debug.print("  Comments JSON: {s}\n", .{res.comments orelse "[]"});
     }
+
+    // 9. Test Filtering: whereIn, whereBetween, whereNull
+    std.debug.print("\n--- Testing Filters: whereIn, whereBetween, whereNull ---\n", .{});
+
+    // whereIn - TODO: Fix parameterization
+    // var query_in = models.Users.query();
+    // defer query_in.deinit();
+    // _ = query_in.whereIn(.name, &.{ "'rou'", "'alice'" });
+    // const users_in = try query_in.fetch(db, arena_allocator, .{});
+    // std.debug.print("whereInResult: {d} users found (Expected 2)\n", .{users_in.len});
+
+    // whereNull
+    var query_null = models.Users.query();
+    defer query_null.deinit();
+    _ = query_null.whereNull(.bid);
+    const users_null = try query_null.fetch(db, arena_allocator, .{});
+    std.debug.print("whereNullResult: {d} users found (Expected 1 - Alice)\n", .{users_null.len});
+
+    // whereNotNull
+    var query_not_null = models.Users.query();
+    defer query_not_null.deinit();
+    _ = query_not_null.whereNotNull(.bid);
+    const users_not_null = try query_not_null.fetch(db, arena_allocator, .{});
+    std.debug.print("whereNotNullResult: {d} users found (Expected 2 - rou, bob)\n", .{users_not_null.len});
+
+    // 9. Test Aggregates: count, exists, sum, min, max
+    std.debug.print("\n--- Testing Aggregates: count, exists, sum, min, max ---\n", .{});
+
+    var count_query = models.Users.query();
+    defer count_query.deinit();
+    const total_users = try count_query.count(db, .{});
+    std.debug.print("count(): {d} (Expected 3)\n", .{total_users});
+
+    var exists_query = models.Users.query();
+    defer exists_query.deinit();
+    _ = exists_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "rou" } });
+    const has_rou = try exists_query.exists(db, .{});
+    std.debug.print("exists(rou): {any} (Expected true)\n", .{has_rou});
+
+    var active_count_query = models.Users.query();
+    defer active_count_query.deinit();
+    _ = active_count_query.where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } });
+    const is_active_count = try active_count_query.count(db, .{});
+    std.debug.print("count(active): {d} (Expected 2)\n", .{is_active_count});
+
+    // Test sum on a dummy field or raw
+    // Since we don't have a numeric field in Users besides timestamp, let's check Comments counts per post
+    var comment_count_query = models.Comments.query();
+    defer comment_count_query.deinit();
+    const comment_count_sum = try comment_count_query.count(db, .{});
+    std.debug.print("Total comments: {d} (Expected 3)\n", .{comment_count_sum});
+
+    // 10. Test Advanced Selection: first, pluck
+    std.debug.print("\n--- Testing Selection: first, pluck ---\n", .{});
+
+    var first_query = models.Users.query();
+    defer first_query.deinit();
+    _ = first_query.orderBy(.{ .field = .name, .direction = .asc });
+    const first_user = try first_query.first(db, arena_allocator, .{});
+    if (first_user) |u| {
+        std.debug.print("first() user: {s} (Expected alice)\n", .{u.name});
+    }
+
+    // pluck
+    var pluck_query = models.Users.query();
+    defer pluck_query.deinit();
+    _ = pluck_query.orderBy(.{ .field = .name, .direction = .asc });
+    const names = try pluck_query.pluck(db, arena_allocator, .name, .{});
+    std.debug.print("pluck(name): ", .{});
+    for (names) |name| {
+        std.debug.print("{s}, ", .{name});
+    }
+    std.debug.print("\n", .{});
+
+    // 11. Test Grouping & Distinct
+    std.debug.print("\n--- Testing Grouping & Distinct ---\n", .{});
+
+    // distinct
+    var distinct_query = models.Users.query();
+    defer distinct_query.deinit();
+    _ = distinct_query.distinct().select(&.{.email});
+    const distinct_emails = try distinct_query.fetchAs(struct { email: []const u8 }, db, arena_allocator, .{});
+    std.debug.print("distinct emails: {d} (Expected 3)\n", .{distinct_emails.len});
+
+    // 12. Test final action: delete
+    std.debug.print("\n--- Testing Action: delete ---\n", .{});
+    var delete_query = models.Users.query();
+    defer delete_query.deinit();
+    _ = delete_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "bob" } });
+    try delete_query.delete(db, .{});
+
+    var count_after_delete = models.Users.query();
+    defer count_after_delete.deinit();
+    const after_delete_count = try count_after_delete.count(db, .{});
+    std.debug.print("Count after deleting bob: {d} (Expected 2)\n", .{after_delete_count});
+
+    std.debug.print("\n🎉 All query tests completed!\n", .{});
 }

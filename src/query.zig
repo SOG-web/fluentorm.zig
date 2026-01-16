@@ -408,14 +408,14 @@ pub fn orWhereRaw(self: anytype, raw_sql: []const u8) void {
 }
 
 pub fn whereNull(self: anytype, field: anytype) void {
-    self.where(.{
+    _ = self.where(.{
         .field = field,
         .operator = .is_null,
     });
 }
 
 pub fn whereNotNull(self: anytype, field: anytype) void {
-    self.where(.{
+    _ = self.where(.{
         .field = field,
         .operator = .is_not_null,
     });
@@ -789,12 +789,6 @@ pub fn count(self: anytype, db: Executor, args: anytype, Model: type) !i64 {
     try sql.appendSlice(temp_allocator, "SELECT COUNT(*) FROM ");
     try sql.appendSlice(temp_allocator, table_name);
 
-    // JOIN clauses
-    for (self.join_clauses.items) |join_sql| {
-        try sql.appendSlice(temp_allocator, " ");
-        try sql.appendSlice(temp_allocator, join_sql);
-    }
-
     var first_where = true;
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
@@ -824,7 +818,8 @@ pub fn count(self: anytype, db: Executor, args: anytype, Model: type) !i64 {
 }
 
 pub fn exists(self: anytype, db: Executor, args: anytype, Model: type) !bool {
-    const c = try self.count(db, args, Model);
+    _ = Model; // autofix
+    const c = try self.count(db, args);
     return c > 0;
 }
 
