@@ -97,6 +97,15 @@ const Posts = @This();
         return "posts";
     }
 
+    /// Comptime constant for table name (optimization)
+    pub const table_name = "posts";
+
+    /// Comptime constant for base SELECT clause (optimization)
+    pub const base_select = "SELECT posts.* FROM posts";
+
+    /// Comptime constant for base SELECT prefix when building custom selects (optimization)
+    pub const base_select_prefix = "SELECT posts.*, ";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO posts (

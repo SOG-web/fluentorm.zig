@@ -69,8 +69,12 @@ const Self = @This();
    };
 
    pub const SelectField = []const FieldEnum;
+ /// Comptime constant for table name (optimization)
+ pub const table_name = Model.table_name;
+
+ /// Returns the table name (uses comptime constant for optimization)
  pub fn tablename(_: *Self) []const u8 {
-    return Model.tableName();
+    return table_name;
  }
 
  /// Create a new query builder using page_allocator for its arena.
@@ -529,17 +533,34 @@ pub fn onlyDeleted(self: *Self) *Self {
     return self;
 }
 
+// SQL fragment constants for better readability and potential compiler optimization
+const SQL_SELECT = "SELECT ";
+const SQL_SELECT_DISTINCT = "SELECT DISTINCT ";
+const SQL_FROM = " FROM ";
+const SQL_WHERE = " WHERE ";
+const SQL_AND = " AND ";
+const SQL_OR = " OR ";
+const SQL_GROUP_BY = " GROUP BY ";
+const SQL_HAVING = " HAVING ";
+const SQL_ORDER_BY = " ORDER BY ";
+const SQL_LIMIT = " LIMIT ";
+const SQL_OFFSET = " OFFSET ";
+const SQL_COMMA = ", ";
+const SQL_WILDCARD_SUFFIX = ".*";
+const SQL_WILDCARD_SUFFIX_COMMA = ".*, ";
+
 pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     var sql = std.ArrayList(u8){};
     defer sql.deinit(allocator);
 
-    const table_name = self.tablename();
+    // Use comptime constant instead of function call
+    const table_name = @This().table_name;
 
     // SELECT clause
     if (self.distinct_enabled) {
-        try sql.appendSlice(allocator, "SELECT DISTINCT ");
+        try sql.appendSlice(allocator, SQL_SELECT_DISTINCT);
     } else {
-        try sql.appendSlice(allocator, "SELECT ");
+        try sql.appendSlice(allocator, SQL_SELECT);
     }
 
     var has_select_clause = false;
@@ -547,7 +568,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
         for (self.select_clauses.items, 0..) |clause, i| {
             try sql.appendSlice(allocator, clause);
             if (i < self.select_clauses.items.len - 1) {
-                try sql.appendSlice(allocator, ", ");
+                try sql.appendSlice(allocator, SQL_COMMA);
             }
         }
         has_select_clause = true;
@@ -556,9 +577,14 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     // build join clause selects
     if (self.join_clauses.items.len > 0) {
         if (has_select_clause) {
-            try sql.appendSlice(allocator, ", ");
+            try sql.appendSlice(allocator, SQL_COMMA);
         } else {
-            try sql.writer(allocator).print("{s}.*, ", .{table_name});
+            // Use fixed buffer with fallback to allocPrint
+            var buf: [256]u8 = undefined;
+            const field_str = std.fmt.bufPrint(&buf, "{s}{s}", .{ table_name, SQL_WILDCARD_SUFFIX_COMMA }) catch blk: {
+                break :blk try std.fmt.allocPrint(self.arena.allocator(), "{s}{s}", .{ table_name, SQL_WILDCARD_SUFFIX_COMMA });
+            };
+            try sql.appendSlice(allocator, field_str);
         }
         for (self.join_clauses.items, 0..) |join_clause, j| {
             if (join_clause.select.len == 1 and std.mem.eql(u8, join_clause.select[0], "*")) {
@@ -584,23 +610,34 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
                         sel,
                     });
                     if (k < join_clause.select.len - 1) {
-                        try sql.appendSlice(allocator, ", ");
+                        try sql.appendSlice(allocator, SQL_COMMA);
                     }
                 }
             }
 
             if (j < self.join_clauses.items.len - 1) {
-                try sql.appendSlice(allocator, ", ");
+                try sql.appendSlice(allocator, SQL_COMMA);
             }
         }
     } else {
          if (!has_select_clause) {
-            try sql.writer(allocator).print("{s}.*", .{table_name});
+            // Use comptime base_select when no custom clauses or joins
+            // Use fixed buffer with fallback to allocPrint
+            var buf: [256]u8 = undefined;
+            const field_str = std.fmt.bufPrint(&buf, "{s}{s}", .{ table_name, SQL_WILDCARD_SUFFIX }) catch blk: {
+                break :blk try std.fmt.allocPrint(self.arena.allocator(), "{s}{s}", .{ table_name, SQL_WILDCARD_SUFFIX });
+            };
+            try sql.appendSlice(allocator, field_str);
         }
     }
 
-    // FROM clause
-    try sql.writer(allocator).print(" FROM {s} ", .{table_name});
+    // FROM clause - use constant and fixed buffer
+    try sql.appendSlice(allocator, SQL_FROM);
+    var buf_from: [256]u8 = undefined;
+    const from_str = std.fmt.bufPrint(&buf_from, "{s} ", .{table_name}) catch blk: {
+        break :blk try std.fmt.allocPrint(self.arena.allocator(), "{s} ", .{table_name});
+    };
+    try sql.appendSlice(allocator, from_str);
 
     // Process join clause
     if (self.join_clauses.items.len > 0) {
@@ -640,7 +677,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
                             return error.FirstPredicateCannotBeOr;
                         }
 
-                        try sql.appendSlice(allocator, " AND ");
+                        try sql.appendSlice(allocator, SQL_AND);
 
                         if (next_is_or) {
                             try sql.appendSlice(allocator, "(");
@@ -658,7 +695,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
                             in_or_group = false;
                         }
 
-                        try sql.appendSlice(allocator, " AND ");
+                        try sql.appendSlice(allocator, SQL_AND);
 
                         // Open OR group if next is OR
                         if (next_is_or) {
@@ -668,7 +705,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
 
                         try sql.appendSlice(allocator, predicate.sql);
                     } else { // .@"or"
-                        try sql.appendSlice(allocator, " OR ");
+                        try sql.appendSlice(allocator, SQL_OR);
                         try sql.appendSlice(allocator, predicate.sql);
 
                         // Close group if next is not OR
@@ -692,14 +729,15 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     // Handle soft deletes
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try sql.appendSlice(allocator, " WHERE deleted_at IS NULL");
+        try sql.appendSlice(allocator, SQL_WHERE);
+        try sql.appendSlice(allocator, "deleted_at IS NULL");
         first_where = false;
     }
 
     // WHERE clauses
     for (self.where_clauses.items) |clause| {
         if (first_where) {
-            try sql.appendSlice(allocator, " WHERE ");
+            try sql.appendSlice(allocator, SQL_WHERE);
             first_where = false;
         } else {
             try sql.writer(allocator).print(" {s} ", .{clause.clause_type.toSql()});
@@ -709,33 +747,33 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
 
     // GROUP BY clause
     if (self.group_clauses.items.len > 0) {
-        try sql.appendSlice(allocator, " GROUP BY ");
+        try sql.appendSlice(allocator, SQL_GROUP_BY);
         for (self.group_clauses.items, 0..) |group, i| {
             try sql.appendSlice(allocator, group);
             if (i < self.group_clauses.items.len - 1) {
-                try sql.appendSlice(allocator, ", ");
+                try sql.appendSlice(allocator, SQL_COMMA);
             }
         }
     }
 
     // HAVING clause
     if (self.having_clauses.items.len > 0) {
-        try sql.appendSlice(allocator, " HAVING ");
+        try sql.appendSlice(allocator, SQL_HAVING);
         for (self.having_clauses.items, 0..) |having_clause, i| {
             try sql.appendSlice(allocator, having_clause);
             if (i < self.having_clauses.items.len - 1) {
-                try sql.appendSlice(allocator, " AND ");
+                try sql.appendSlice(allocator, SQL_AND);
             }
         }
     }
 
     // ORDER BY clause
     if (self.order_clauses.items.len > 0) {
-        try sql.appendSlice(allocator, " ORDER BY ");
+        try sql.appendSlice(allocator, SQL_ORDER_BY);
         for (self.order_clauses.items, 0..) |order, i| {
             try sql.appendSlice(allocator, order);
             if (i < self.order_clauses.items.len - 1) {
-                try sql.appendSlice(allocator, ", ");
+                try sql.appendSlice(allocator, SQL_COMMA);
             }
         }
     }

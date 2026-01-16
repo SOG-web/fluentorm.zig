@@ -81,6 +81,15 @@ const PostCategories = @This();
         return "post_categories";
     }
 
+    /// Comptime constant for table name (optimization)
+    pub const table_name = "post_categories";
+
+    /// Comptime constant for base SELECT clause (optimization)
+    pub const base_select = "SELECT post_categories.* FROM post_categories";
+
+    /// Comptime constant for base SELECT prefix when building custom selects (optimization)
+    pub const base_select_prefix = "SELECT post_categories.*, ";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO post_categories (

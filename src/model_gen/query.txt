@@ -346,9 +346,6 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     var sql = std.ArrayList(u8){};
     defer sql.deinit(allocator);
 
-    // Use comptime constant instead of function call
-    const table_name = @This().table_name;
-
     // SELECT clause
     if (self.distinct_enabled) {
         try sql.appendSlice(allocator, SQL_SELECT_DISTINCT);

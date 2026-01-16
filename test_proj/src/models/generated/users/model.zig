@@ -109,6 +109,15 @@ const Users = @This();
         return "users";
     }
 
+    /// Comptime constant for table name (optimization)
+    pub const table_name = "users";
+
+    /// Comptime constant for base SELECT clause (optimization)
+    pub const base_select = "SELECT users.* FROM users";
+
+    /// Comptime constant for base SELECT prefix when building custom selects (optimization)
+    pub const base_select_prefix = "SELECT users.*, ";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO users (
