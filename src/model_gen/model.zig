@@ -272,8 +272,17 @@ pub fn generateSQLMethods(writer: anytype, schema: TableSchema, struct_name: []c
         \\        return "{s}";
         \\    }}
         \\
+        \\    /// Comptime constant for table name (optimization)
+        \\    pub const table_name = "{s}";
         \\
-    , .{schema.name});
+        \\    /// Comptime constant for base SELECT clause (optimization)
+        \\    pub const base_select = "SELECT {s}.* FROM {s}";
+        \\
+        \\    /// Comptime constant for base SELECT prefix when building custom selects (optimization)
+        \\    pub const base_select_prefix = "SELECT {s}.*, ";
+        \\
+        \\
+    , .{ schema.name, schema.name, schema.name, schema.name, schema.name });
 
     // insertSQL
     try generateInsertSQL(writer, schema, fields, allocator);
