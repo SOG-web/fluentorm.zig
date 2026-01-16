@@ -368,4 +368,289 @@ pub fn main() !void {
     std.debug.print("Count after deleting bob: {d} (Expected 2)\n", .{after_delete_count});
 
     std.debug.print("\n🎉 All query tests completed!\n", .{});
+
+    // ============================================================================
+    // TRANSACTION TESTS
+    // ============================================================================
+    std.debug.print("\n\n========================================\n", .{});
+    std.debug.print("TRANSACTION TESTS\n", .{});
+    std.debug.print("========================================\n\n", .{});
+
+    const Transaction = @import("models/generated/transaction.zig").Transaction;
+
+    // 13. Test Transaction Commit
+    std.debug.print("--- Test 13: Transaction Commit ---\n", .{});
+    {
+        std.debug.print("Attempting to begin transaction...\n", .{});
+        var tx = Transaction.begin(pool) catch |err| {
+            std.debug.print("ERROR: Failed to begin transaction: {any}\n", .{err});
+            return err;
+        };
+        defer tx.deinit();
+
+        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_commit_user",
+            .email = "tx_commit@example.com",
+            .password_hash = "hashed_password",
+            .bid = null,
+            .is_active = true,
+        });
+        defer allocator.free(tx_user_id);
+
+        // Commit the transaction
+        try tx.commit();
+
+        // Verify the user was created
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_commit_user" } });
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after commit: {d} (Expected 1)\n", .{tx_users.len});
+    }
+
+    // 14. Test Transaction Rollback
+    std.debug.print("\n--- Test 14: Transaction Rollback ---\n", .{});
+    {
+        var tx = try Transaction.begin(pool);
+        defer tx.deinit();
+
+        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_rollback_user",
+            .email = "tx_rollback@example.com",
+            .password_hash = "hashed_password",
+            .bid = null,
+            .is_active = true,
+        });
+        defer allocator.free(tx_user_id);
+
+        // Rollback the transaction
+        try tx.rollback();
+
+        // Verify the user was NOT created
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_rollback_user" } });
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after rollback: {d} (Expected 0)\n", .{tx_users.len});
+    }
+
+    // 15. Test Transaction with Multiple Operations
+    std.debug.print("\n--- Test 15: Transaction with Multiple Operations ---\n", .{});
+    {
+        var tx = try Transaction.begin(pool);
+        defer tx.deinit();
+
+        // Create user
+        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_multi_user",
+            .email = "tx_multi@example.com",
+            .password_hash = "hashed_password",
+            .bid = "MULTI_USER",
+            .is_active = true,
+        });
+        defer allocator.free(tx_user_id);
+
+        const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
+
+        // Create post for the user
+        const tx_post_id = try models.Posts.insert(tx.executor(), allocator, models.Posts.CreateInput{
+            .title = "Transaction Post",
+            .content = "This post is part of a transaction",
+            .user_id = &tx_user_hex,
+            .is_published = true,
+        });
+        defer allocator.free(tx_post_id);
+
+        const tx_post_hex = try pg.uuidToHex(&tx_post_id[0..16].*);
+
+        // Create comment on the post
+        const tx_comment_id = try models.Comments.insert(tx.executor(), allocator, models.Comments.CreateInput{
+            .post_id = &tx_post_hex,
+            .user_id = &tx_user_hex,
+            .content = "This comment is part of a transaction",
+            .is_approved = true,
+        });
+        defer allocator.free(tx_comment_id);
+
+        // Commit all operations
+        try tx.commit();
+
+        // Verify all records were created
+        var verify_user_query = models.Users.query();
+        defer verify_user_query.deinit();
+        _ = verify_user_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_multi_user" } });
+        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users created: {d} (Expected 1)\n", .{tx_users.len});
+
+        var verify_post_query = models.Posts.query();
+        defer verify_post_query.deinit();
+        _ = verify_post_query.where(.{ .field = .title, .operator = .eq, .value = .{ .string = "Transaction Post" } });
+        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Posts created: {d} (Expected 1)\n", .{tx_posts.len});
+
+        var verify_comment_query = models.Comments.query();
+        defer verify_comment_query.deinit();
+        _ = verify_comment_query.where(.{ .field = .content, .operator = .eq, .value = .{ .string = "This comment is part of a transaction" } });
+        const tx_comments = try verify_comment_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Comments created: {d} (Expected 1)\n", .{tx_comments.len});
+    }
+
+    // 16. Test Transaction Rollback with Multiple Operations
+    std.debug.print("\n--- Test 16: Transaction Rollback with Multiple Operations ---\n", .{});
+    {
+        var tx = try Transaction.begin(pool);
+        defer tx.deinit();
+
+        // Create user
+        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_rollback_multi_user",
+            .email = "tx_rollback_multi@example.com",
+            .password_hash = "hashed_password",
+            .bid = null,
+            .is_active = true,
+        });
+        defer allocator.free(tx_user_id);
+
+        const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
+
+        // Create post for the user
+        const tx_post_id = try models.Posts.insert(tx.executor(), allocator, models.Posts.CreateInput{
+            .title = "Rollback Transaction Post",
+            .content = "This post will be rolled back",
+            .user_id = &tx_user_hex,
+            .is_published = true,
+        });
+        defer allocator.free(tx_post_id);
+
+        // Rollback all operations
+        try tx.rollback();
+
+        // Verify NO records were created
+        var verify_user_query = models.Users.query();
+        defer verify_user_query.deinit();
+        _ = verify_user_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_rollback_multi_user" } });
+        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after rollback: {d} (Expected 0)\n", .{tx_users.len});
+
+        var verify_post_query = models.Posts.query();
+        defer verify_post_query.deinit();
+        _ = verify_post_query.where(.{ .field = .title, .operator = .eq, .value = .{ .string = "Rollback Transaction Post" } });
+        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Posts after rollback: {d} (Expected 0)\n", .{tx_posts.len});
+    }
+
+    // 17. Test Transaction Query Operations
+    std.debug.print("\n--- Test 17: Transaction Query Operations ---\n", .{});
+    {
+        var tx = try Transaction.begin(pool);
+        defer tx.deinit();
+
+        // Create test users in transaction
+        const tx_user1_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_query_user1",
+            .email = "tx_query1@example.com",
+            .password_hash = "hashed_password",
+            .bid = "QUERY_USER",
+            .is_active = true,
+        });
+        defer allocator.free(tx_user1_id);
+
+        const tx_user2_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_query_user2",
+            .email = "tx_query2@example.com",
+            .password_hash = "hashed_password",
+            .bid = "QUERY_USER",
+            .is_active = true,
+        });
+        defer allocator.free(tx_user2_id);
+
+        // Query within transaction
+        var tx_query = models.Users.query();
+        defer tx_query.deinit();
+        _ = tx_query.where(.{ .field = .bid, .operator = .eq, .value = .{ .string = "QUERY_USER" } });
+        const tx_users = try tx_query.fetch(tx.executor(), arena_allocator, .{});
+        std.debug.print("Users in transaction query: {d} (Expected 2)\n", .{tx_users.len});
+
+        // Commit
+        try tx.commit();
+
+        // Verify outside transaction
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .bid, .operator = .eq, .value = .{ .string = "QUERY_USER" } });
+        const verify_users = try verify_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after commit: {d} (Expected 2)\n", .{verify_users.len});
+    }
+
+    // 18. Test Transaction Error Handling
+    std.debug.print("\n--- Test 18: Transaction Error Handling ---\n", .{});
+    {
+        var tx = try Transaction.begin(pool);
+        defer tx.deinit();
+
+        // Create a valid user
+        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_error_user",
+            .email = "tx_error@example.com",
+            .password_hash = "hashed_password",
+            .bid = null,
+            .is_active = true,
+        });
+        defer allocator.free(tx_user_id);
+
+        // Try to create a duplicate email (should fail)
+        const duplicate_result = models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+            .name = "tx_duplicate_user",
+            .email = "tx_error@example.com", // Same email
+            .password_hash = "hashed_password",
+            .bid = null,
+            .is_active = true,
+        });
+
+        if (duplicate_result) |dup_id| {
+            allocator.free(dup_id);
+            std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
+        } else |err| {
+            std.debug.print("Expected error on duplicate: {any}\n", .{err});
+        }
+
+        // Rollback after error
+        try tx.rollback();
+
+        // Verify nothing was committed
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "tx_error@example.com" } });
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users.len});
+    }
+
+    // 19. Test Auto-Rollback on deinit
+    std.debug.print("\n--- Test 19: Auto-Rollback on deinit ---\n", .{});
+    {
+        {
+            var tx = try Transaction.begin(pool);
+            defer tx.deinit(); // Auto-rollback because we don't commit
+
+            const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+                .name = "tx_auto_rollback_user",
+                .email = "tx_auto_rollback@example.com",
+                .password_hash = "hashed_password",
+                .bid = null,
+                .is_active = true,
+            });
+            defer allocator.free(tx_user_id);
+
+            // No commit - should auto-rollback when tx goes out of scope
+        }
+
+        // Verify the user was NOT created
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_auto_rollback_user" } });
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        std.debug.print("Users after auto-rollback: {d} (Expected 0)\n", .{tx_users.len});
+    }
+
+    std.debug.print("\n🎉 All transaction tests completed!\n", .{});
 }

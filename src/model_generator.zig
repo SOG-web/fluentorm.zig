@@ -173,6 +173,7 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     }
     try root_writer.writeAll("pub const Rel = Client.Rel;\n\n");
     try root_writer.writeAll("pub const Executor = @import(\"executor.zig\").Executor;\n\n");
+    try root_writer.writeAll("pub const Transaction = @import(\"transaction.zig\").Transaction;\n\n");
 
     try std.fs.cwd().writeFile(.{ .sub_path = root_file_name, .data = root_output.items });
 
