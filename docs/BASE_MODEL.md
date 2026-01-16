@@ -34,19 +34,60 @@ const user = try Users.findById(tx.executor(), allocator, id);
 
 ## CRUD Operations
 
+### ⚠️ Memory Management for Insert Operations
+
+**CRITICAL**: All insert operations (`insert`, `insertMany`, `upsert`) return **allocated UUID strings** that **MUST** be freed to prevent memory leaks:
+
+```zig
+// ✅ Correct: Free the returned ID
+const user_id = try Users.insert(Executor.fromPool(pool), allocator, .{
+    .email = "alice@example.com",
+    .name = "Alice",
+});
+defer allocator.free(user_id);  // MUST free!
+
+// ❌ Memory leak: ID not freed
+_ = try Users.insert(Executor.fromPool(pool), allocator, .{...});  // LEAKS MEMORY
+```
+
+#### Multiple Inserts
+
+When inserting multiple records, **each returned ID must be freed**:
+
+```zig
+const user1_id = try Users.insert(db, allocator, .{...});
+defer allocator.free(user1_id);  // Free first ID
+
+const user2_id = try Users.insert(db, allocator, .{...});
+defer allocator.free(user2_id);  // Free second ID
+
+const user3_id = try Users.insert(db, allocator, .{...});
+defer allocator.free(user3_id);  // Free third ID
+```
+
+#### insertMany Return Value
+
+`insertMany` returns a **slice** of allocated UUID strings:
+
+```zig
+const ids = try Users.insertMany(db, allocator, &.{
+    .{ .name = "Alice", .email = "alice@example.com" },
+    .{ .name = "Bob", .email = "bob@example.com" },
+});
+defer allocator.free(ids);  // Frees the slice AND all individual IDs
+```
+
 ### Create (Insert)
 
 Insert a new record and get back the primary key:
 
 ```zig
-const Executor = @import("executor.zig").Executor;
-
 const user_id = try Users.insert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
 });
-defer allocator.free(user_id);
+defer allocator.free(user_id);  // MUST free!
 ```
 
 **Note**: Fields marked with `.create_input = .excluded` (like auto-generated UUIDs and timestamps) are automatically excluded from the insert input struct.
