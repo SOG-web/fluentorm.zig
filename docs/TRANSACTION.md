@@ -238,3 +238,68 @@ Key changes:
 2. Pass `pool` instead of `conn` to `begin()`
 3. Use `tx.executor()` with any model's methods
 4. Explicit `tx.commit()` required
+
+## Known Issues
+
+### ⚠️ ConnectionBusy Error (pg.zig library issue)
+
+**Status:** BROKEN - Transactions are currently non-functional
+
+When attempting to use transactions, you may encounter a `ConnectionBusy` error:
+
+```text
+error: ConnectionBusy
+???:?:?: 0x10f38495c in ??? (???)
+```
+
+**Root Cause:**
+
+The error occurs when calling `Transaction.begin(pool)`, specifically when the transaction attempts to call `conn.begin()` on a connection acquired from the pool. This appears to be an issue with the underlying `pg.zig` library where connections may be in an unexpected state or the library doesn't properly support the transaction methods.
+
+**Technical Details:**
+
+The `Transaction` struct attempts to:
+
+1. Acquire a connection from the pool: `const conn = try pool.acquire();`
+2. Begin a transaction: `try conn.begin();`
+
+The `ConnectionBusy` error occurs at step 2, suggesting that:
+
+- The connection state is not properly initialized
+- The `conn.begin()` method may have compatibility issues with the current pg.zig version
+- There may be pool connection state management issues
+
+**Attempted Fixes:**
+
+We tried using raw SQL commands instead of the connection methods:
+
+- `conn.exec("BEGIN", .{})` instead of `conn.begin()`
+- `conn.exec("COMMIT", .{})` instead of `conn.commit()`
+- `conn.exec("ROLLBACK", .{})` instead of `conn.rollback()`
+
+However, these also failed with the same `ConnectionBusy` error, confirming the issue is at the connection acquisition/state level, not with the specific transaction methods.
+
+**Workaround:**
+
+Until this is resolved in the pg.zig library, transactions are **not supported**. For operations that require atomicity, you may need to:
+
+1. Use manual SQL transaction commands with error handling
+2. Structure your application logic to minimize the need for transactions
+3. Wait for a fix in the pg.zig library or FluentORM
+
+**Related:**
+
+- GitHub Issue: [Link to be added]
+- Tested with: pg.zig latest version (as of 2026-01-16)
+
+**Test Coverage:**
+
+Comprehensive transaction tests have been implemented in `test_proj/src/main.zig` covering:
+
+- Basic commit and rollback
+- Multi-model operations
+- Query operations within transactions
+- Error handling
+- Auto-rollback on defer
+
+These tests are ready to verify the fix once the underlying connection issue is resolved.

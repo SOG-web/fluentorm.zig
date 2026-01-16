@@ -11,7 +11,7 @@ A schema-first, type-safe ORM for Zig with PostgreSQL support. Define your datab
 - ✅ **Type-Safe Query Builder**: Fluent API for building SQL queries with compile-time field validation
 - ✅ **Relationship Support**: Define and query relationships (one-to-many, many-to-one, one-to-one)
 - ✅ **Eager Loading with IntelliSense**: Load relations via `include()` with full IDE autocomplete using explicit relation types
-- ✅ **Transaction Support**: Built-in transaction handling with rollback on error
+- ⚠️ **Transaction Support**: Transaction API implemented but currently non-functional due to ConnectionBusy error in pg.zig (see [Known Issues](#known-issues))
 - ✅ **Soft Deletes**: Optional soft-delete functionality with `deleted_at` timestamps
 - ✅ **JSON Response Helpers**: Auto-generate JSON-safe response types with UUID conversion
 
@@ -332,6 +332,20 @@ t.hasMany(.{
 
 - **Zig**: 0.15.1 or later
 - **pg.zig**: Automatically included as a transitive dependency
+
+## Known Issues
+
+### ⚠️ Transaction Support - ConnectionBusy Error
+
+The Transaction API is currently non-functional due to a `ConnectionBusy` error when calling `Transaction.begin(pool)`. This appears to be an issue with the underlying pg.zig library's connection state management.
+
+**Status:** BROKEN - Transactions cannot be used until this is resolved
+
+**Workaround:** None available. Users must structure application logic to avoid needing atomic multi-operation transactions.
+
+**Details:** See [TRANSACTION.md Known Issues](docs/TRANSACTION.md#known-issues) for full technical analysis and attempted solutions.
+
+**GitHub Issue:** `.github_issue_transaction_bug.md` - Copy this file's content to create a GitHub issue
 
 ## Contributing
 
