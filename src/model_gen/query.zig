@@ -149,8 +149,13 @@ pub fn generateStructDefinition(writer: anytype) !void {
 
     // init, deinit, reset
     try writer.writeAll(
-        \\ /// Comptime constant for table name (optimization - replaces tablename() method)
+        \\ /// Comptime constant for table name (optimization)
         \\ pub const table_name = Model.table_name;
+        \\
+        \\ /// Returns the table name (uses comptime constant for optimization)
+        \\ pub fn tablename(_: *Self) []const u8 {
+        \\    return table_name;
+        \\ }
         \\
         \\ /// Create a new query builder using page_allocator for its arena.
         \\ pub fn init() Self {
