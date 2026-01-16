@@ -275,12 +275,12 @@ pub fn main() !void {
     // 9. Test Filtering: whereIn, whereBetween, whereNull
     std.debug.print("\n--- Testing Filters: whereIn, whereBetween, whereNull ---\n", .{});
 
-    // whereIn - TODO: Fix parameterization
-    // var query_in = models.Users.query();
-    // defer query_in.deinit();
-    // _ = query_in.whereIn(.name, &.{ "'rou'", "'alice'" });
-    // const users_in = try query_in.fetch(db, arena_allocator, .{});
-    // std.debug.print("whereInResult: {d} users found (Expected 2)\n", .{users_in.len});
+    // whereIn
+    var query_in = models.Users.query();
+    defer query_in.deinit();
+    _ = query_in.whereIn(.name, &.{ "rou", "alice" });
+    const users_in = try query_in.fetch(db, arena_allocator, .{});
+    std.debug.print("whereInResult: {d} users found (Expected 2)\n", .{users_in.len});
 
     // whereNull
     var query_null = models.Users.query();
