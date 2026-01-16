@@ -56,20 +56,24 @@ pub const ProfilesWithUsers = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.user_id = row.get([]const u8, "user_id");
-        result.bio = row.get(?[]const u8, "bio");
-        result.avatar_url = row.get(?[]const u8, "avatar_url");
-        result.website = row.get(?[]const u8, "website");
-        result.location = row.get(?[]const u8, "location");
-        result.date_of_birth = row.get(?i64, "date_of_birth");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
+        result.id = row.getCol([]const u8, "id");
+        result.user_id = row.getCol([]const u8, "user_id");
+        result.bio = row.getCol(?[]const u8, "bio");
+        result.avatar_url = row.getCol(?[]const u8, "avatar_url");
+        result.website = row.getCol(?[]const u8, "website");
+        result.location = row.getCol(?[]const u8, "location");
+        result.date_of_birth = row.getCol(?i64, "date_of_birth");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
 
         // Parse JSONB relation: user
-        const user_json = row.get(?[]const u8, "user");
+        const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            result.user = std.json.parseFromSlice(Users, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+                result.user = parsed.value;
+            } else |_| {
+                result.user = null;
+            }
         } else {
             result.user = null;
         }

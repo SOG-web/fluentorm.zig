@@ -36,6 +36,14 @@ const Categories = @This();
         is_active,
         created_at,
         updated_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                else => false,
+            };
+        }
     };
     pub const RelationEnum = enum {
         posts,
@@ -91,11 +99,13 @@ const Categories = @This();
         return "categories";
     }
 
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'name', name, 'slug', slug, 'description', description, 'color', color, 'sort_order', sort_order, 'is_active', is_active, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint)";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO categories (
             \\    name, slug, description, color, sort_order, is_active
-            \\) VALUES ($1, $2, $3, COALESCE($4, ''#3B82F6''), COALESCE($5, 0), COALESCE($6, 'true'))
+            \\) VALUES ($1, $2, $3, COALESCE($4, ''#3B82F6''), COALESCE($5, 0), COALESCE($6, true))
             \\RETURNING id
         ;
     }

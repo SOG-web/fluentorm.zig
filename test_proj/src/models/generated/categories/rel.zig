@@ -56,20 +56,24 @@ pub const CategoriesWithPostCategories = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.name = row.get([]const u8, "name");
-        result.slug = row.get([]const u8, "slug");
-        result.description = row.get(?[]const u8, "description");
-        result.color = row.get(?[]const u8, "color");
-        result.sort_order = row.get(i32, "sort_order");
-        result.is_active = row.get(bool, "is_active");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
+        result.id = row.getCol([]const u8, "id");
+        result.name = row.getCol([]const u8, "name");
+        result.slug = row.getCol([]const u8, "slug");
+        result.description = row.getCol(?[]const u8, "description");
+        result.color = row.getCol(?[]const u8, "color");
+        result.sort_order = row.getCol(i32, "sort_order");
+        result.is_active = row.getCol(bool, "is_active");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
 
         // Parse JSONB relation: posts
-        const posts_json = row.get(?[]const u8, "posts");
+        const posts_json = row.getCol(?[]const u8, "posts");
         if (posts_json) |json_str| {
-            result.posts = std.json.parseFromSlice([]PostCategories, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice([]PostCategories, allocator, json_str, .{})) |parsed| {
+                result.posts = parsed.value;
+            } else |_| {
+                result.posts = null;
+            }
         } else {
             result.posts = null;
         }

@@ -3,8 +3,8 @@ const std = @import("std");
 const pg = @import("pg");
 
 const Executor = @import("executor.zig").Executor;
-const Tables = @import("registry.zig").Tables;
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
+const Tables = @import("registry.zig").Tables;
 
 pub const Relationship = struct {
     name: []const u8,
@@ -33,7 +33,7 @@ pub fn BaseModel(comptime T: type) type {
             const temp_allocator = arena.allocator();
 
             const table_name = T.tableName();
-            const sql = try std.fmt.allocPrint(temp_allocator, "TRUNCATE TABLE {s}", .{table_name});
+            const sql = try std.fmt.allocPrint(temp_allocator, "TRUNCATE TABLE {s} RESTART IDENTITY CASCADE", .{table_name});
             try db.exec(sql, .{});
         }
 
@@ -141,7 +141,10 @@ pub fn BaseModel(comptime T: type) type {
             const sql = T.insertSQL();
             const params = T.insertParams(data);
 
+            // std.debug.print("Executing insert SQL: {s}\n", .{sql});
+
             var result = db.query(sql, params) catch |err| {
+                std.debug.print("Insert failed: {s}\n", .{@errorName(err)});
                 return err;
             };
             defer result.deinit();

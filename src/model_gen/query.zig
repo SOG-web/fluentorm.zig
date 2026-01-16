@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const TableSchema = @import("../table.zig").TableSchema;
-const utils = @import("utils.zig");
 const HasManyRelationship = @import("../schema.zig").HasManyRelationship;
 const Relationship = @import("../schema.zig").Relationship;
+const TableSchema = @import("../table.zig").TableSchema;
+const utils = @import("utils.zig");
 
 pub fn generateHeader(writer: anytype, schema_file: []const u8) !void {
     try writer.print(
@@ -113,6 +113,7 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\ base_select_custom: bool = false,
         \\ select_raw: bool = false,
         \\ fill_base_select: bool = false,
+        \\ owns_arena: bool = true,
         \\
     );
 
@@ -177,9 +178,10 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\
         \\ /// Create a query builder using an existing ArenaAllocator.
         \\ /// Ideal for http.zig request handlers where the arena is managed externally.
-        \\ pub fn initWithArena(arena_allocator: std.heap.ArenaAllocator) Self {
+        \\ pub fn initWithArena(arena_allocator: *std.heap.ArenaAllocator) Self {
         \\    return Self{
-        \\       .arena = arena_allocator,
+        \\       .arena = arena_allocator.*,
+        \\       .owns_arena = false,
         \\       .select_clauses = std.ArrayList([]const u8){},
         \\       .where_clauses = std.ArrayList(WhereClauseInternal){},
         \\       .order_clauses = std.ArrayList([]const u8){},
@@ -201,7 +203,9 @@ pub fn generateStructDefinition(writer: anytype) !void {
         \\    self.having_clauses.deinit(self.arena.allocator());
         \\    self.join_clauses.deinit(self.arena.allocator());
         \\    self.includes_clauses.deinit(self.arena.allocator());
-        \\    self.arena.deinit();
+        \\    if (self.owns_arena) {
+        \\        self.arena.deinit();
+        \\    }
         \\ }
         \\
         \\ pub fn reset(self: *Self) void {
@@ -290,6 +294,7 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
 
         try writer.print("            .{s} => |r| {{\n", .{camel});
         try writer.writeAll(body);
+        try writer.writeAll("                clause.is_many = true;\n");
         try writer.writeAll("\n            },\n");
         has_rels = true;
     }

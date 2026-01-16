@@ -8,7 +8,7 @@ pub const Executor = union(enum) {
     conn: *pg.Conn,
 
     /// Execute a query and return the result
-    pub fn query(self: Executor, sql: []const u8, args: anytype) !pg.Result {
+    pub fn query(self: Executor, sql: []const u8, args: anytype) !*pg.Result {
         return switch (self) {
             .pool => |p| try p.query(sql, args),
             .conn => |c| try c.query(sql, args),
@@ -16,7 +16,7 @@ pub const Executor = union(enum) {
     }
 
     /// Execute a query with options and return the result
-    pub fn queryOpts(self: Executor, sql: []const u8, args: anytype, opts: pg.Conn.QueryOpts) !pg.Result {
+    pub fn queryOpts(self: Executor, sql: []const u8, args: anytype, opts: pg.Conn.QueryOpts) !*pg.Result {
         return switch (self) {
             .pool => |p| try p.queryOpts(sql, args, opts),
             .conn => |c| try c.queryOpts(sql, args, opts),

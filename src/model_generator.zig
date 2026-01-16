@@ -99,6 +99,28 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     for (schemas) |schema| {
         try writer.print("    {s},\n", .{schema.name});
     }
+    try writer.writeAll("\n    pub fn isFieldDateTime(self: @This(), field_name: []const u8) bool {\n");
+    try writer.writeAll("        return switch (self) {\n");
+    for (schemas) |schema| {
+        const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
+        defer allocator.free(struct_name);
+        try writer.print(
+            \\            .{s} => if (std.meta.stringToEnum({s}.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            \\
+        , .{ schema.name, struct_name });
+    }
+    try writer.writeAll("        };\n");
+    try writer.writeAll("    }\n");
+
+    try writer.writeAll("\n    pub fn jsonAllFieldsSql(self: @This()) []const u8 {\n");
+    try writer.writeAll("        return switch (self) {\n");
+    for (schemas) |schema| {
+        const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
+        defer allocator.free(struct_name);
+        try writer.print("            .{s} => {s}.json_all_fields_sql,\n", .{ schema.name, struct_name });
+    }
+    try writer.writeAll("        };\n");
+    try writer.writeAll("    }\n");
     try writer.writeAll("};\n\n");
 
     // Generate TableFields struct
@@ -149,6 +171,8 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
         defer allocator.free(struct_name);
         try root_writer.print("pub const {s} = Client.{s};\n", .{ struct_name, struct_name });
     }
+    try root_writer.writeAll("pub const Rel = Client.Rel;\n\n");
+    try root_writer.writeAll("pub const Executor = @import(\"executor.zig\").Executor;\n\n");
 
     try std.fs.cwd().writeFile(.{ .sub_path = root_file_name, .data = root_output.items });
 

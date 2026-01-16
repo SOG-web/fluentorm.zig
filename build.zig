@@ -17,6 +17,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    fluentzig.addImport("pg", pg.module("pg"));
+    fluentzig.addImport("dotenv", dotenv.module("dotenv"));
+
     // Generator executable - Standalone model generator
     const gen_exe = b.addExecutable(.{
         .name = "fluentzig-gen",

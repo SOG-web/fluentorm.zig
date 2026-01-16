@@ -60,21 +60,25 @@ pub const CommentsWithPosts = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.user_id = row.get([]const u8, "user_id");
-        result.parent_id = row.get(?[]const u8, "parent_id");
-        result.content = row.get([]const u8, "content");
-        result.is_approved = row.get(bool, "is_approved");
-        result.like_count = row.get(i32, "like_count");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.user_id = row.getCol([]const u8, "user_id");
+        result.parent_id = row.getCol(?[]const u8, "parent_id");
+        result.content = row.getCol([]const u8, "content");
+        result.is_approved = row.getCol(bool, "is_approved");
+        result.like_count = row.getCol(i32, "like_count");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
 
         // Parse JSONB relation: post
-        const post_json = row.get(?[]const u8, "post");
+        const post_json = row.getCol(?[]const u8, "post");
         if (post_json) |json_str| {
-            result.post = std.json.parseFromSlice(Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Posts, allocator, json_str, .{})) |parsed| {
+                result.post = parsed.value;
+            } else |_| {
+                result.post = null;
+            }
         } else {
             result.post = null;
         }
@@ -136,21 +140,25 @@ pub const CommentsWithUsers = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.user_id = row.get([]const u8, "user_id");
-        result.parent_id = row.get(?[]const u8, "parent_id");
-        result.content = row.get([]const u8, "content");
-        result.is_approved = row.get(bool, "is_approved");
-        result.like_count = row.get(i32, "like_count");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.user_id = row.getCol([]const u8, "user_id");
+        result.parent_id = row.getCol(?[]const u8, "parent_id");
+        result.content = row.getCol([]const u8, "content");
+        result.is_approved = row.getCol(bool, "is_approved");
+        result.like_count = row.getCol(i32, "like_count");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
 
         // Parse JSONB relation: user
-        const user_json = row.get(?[]const u8, "user");
+        const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            result.user = std.json.parseFromSlice(Users, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+                result.user = parsed.value;
+            } else |_| {
+                result.user = null;
+            }
         } else {
             result.user = null;
         }
@@ -214,27 +222,35 @@ pub const CommentsWithAllRelations = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.user_id = row.get([]const u8, "user_id");
-        result.parent_id = row.get(?[]const u8, "parent_id");
-        result.content = row.get([]const u8, "content");
-        result.is_approved = row.get(bool, "is_approved");
-        result.like_count = row.get(i32, "like_count");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.user_id = row.getCol([]const u8, "user_id");
+        result.parent_id = row.getCol(?[]const u8, "parent_id");
+        result.content = row.getCol([]const u8, "content");
+        result.is_approved = row.getCol(bool, "is_approved");
+        result.like_count = row.getCol(i32, "like_count");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
 
         // Parse JSONB relations
-        const post_json = row.get(?[]const u8, "post");
+        const post_json = row.getCol(?[]const u8, "post");
         if (post_json) |json_str| {
-            result.post = std.json.parseFromSlice(Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Posts, allocator, json_str, .{})) |parsed| {
+                result.post = parsed.value;
+            } else |_| {
+                result.post = null;
+            }
         } else {
             result.post = null;
         }
-        const user_json = row.get(?[]const u8, "user");
+        const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            result.user = std.json.parseFromSlice(Users, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+                result.user = parsed.value;
+            } else |_| {
+                result.user = null;
+            }
         } else {
             result.user = null;
         }

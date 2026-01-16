@@ -102,30 +102,12 @@ fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
     } else if (field.default_value) |default| {
         try sql.appendSlice(allocator, " DEFAULT ");
         const default_type = fieldTypeToEnum(field.type);
-        switch (default_type) {
-            .text, .text_optional => {
-                try sql.appendSlice(allocator, "'");
-                try sql.appendSlice(allocator, default);
-                try sql.appendSlice(allocator, "'");
-            },
-            .uuid, .uuid_optional => {
-                try sql.appendSlice(allocator, "'");
-                try sql.appendSlice(allocator, default);
-                try sql.appendSlice(allocator, "'");
-            },
-            .json, .json_optional, .jsonb, .jsonb_optional => {
-                try sql.appendSlice(allocator, "'");
-                try sql.appendSlice(allocator, default);
-                try sql.appendSlice(allocator, "'");
-            },
-            .binary, .binary_optional => {
-                try sql.appendSlice(allocator, "'");
-                try sql.appendSlice(allocator, default);
-                try sql.appendSlice(allocator, "'");
-            },
-            else => {
-                try sql.appendSlice(allocator, default);
-            },
+        if (default_type.shouldQuoteDefault(default)) {
+            try sql.appendSlice(allocator, "'");
+            try sql.appendSlice(allocator, default);
+            try sql.appendSlice(allocator, "'");
+        } else {
+            try sql.appendSlice(allocator, default);
         }
     }
 }
@@ -146,7 +128,14 @@ fn generateFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8),
                     // For NOT NULL columns, we need a default or to allow null initially
                     if (field.default_value) |default| {
                         try sql.appendSlice(allocator, " NOT NULL DEFAULT ");
-                        try sql.appendSlice(allocator, default);
+                        const default_type = fieldTypeToEnum(field.type);
+                        if (default_type.shouldQuoteDefault(default)) {
+                            try sql.appendSlice(allocator, "'");
+                            try sql.appendSlice(allocator, default);
+                            try sql.appendSlice(allocator, "'");
+                        } else {
+                            try sql.appendSlice(allocator, default);
+                        }
                     } else if (field.auto_generated) {
                         if (std.mem.eql(u8, field.auto_generate_type, "uuid")) {
                             try sql.appendSlice(allocator, " NOT NULL DEFAULT gen_random_uuid()");
@@ -246,31 +235,13 @@ fn generateFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8),
                     try sql.appendSlice(allocator, new_field.name);
                     if (new_default) |nd| {
                         try sql.appendSlice(allocator, " SET DEFAULT ");
-                        const default_type = fieldTypeToEnum(nd);
-                        switch (default_type) {
-                            .text, .text_optional => {
-                                try sql.appendSlice(allocator, "'");
-                                try sql.appendSlice(allocator, nd);
-                                try sql.appendSlice(allocator, "'");
-                            },
-                            .uuid, .uuid_optional => {
-                                try sql.appendSlice(allocator, "'");
-                                try sql.appendSlice(allocator, nd);
-                                try sql.appendSlice(allocator, "'");
-                            },
-                            .json, .json_optional, .jsonb, .jsonb_optional => {
-                                try sql.appendSlice(allocator, "'");
-                                try sql.appendSlice(allocator, nd);
-                                try sql.appendSlice(allocator, "'");
-                            },
-                            .binary, .binary_optional => {
-                                try sql.appendSlice(allocator, "'");
-                                try sql.appendSlice(allocator, nd);
-                                try sql.appendSlice(allocator, "'");
-                            },
-                            else => {
-                                try sql.appendSlice(allocator, nd);
-                            },
+                        const default_type = fieldTypeToEnum(new_field.type);
+                        if (default_type.shouldQuoteDefault(nd)) {
+                            try sql.appendSlice(allocator, "'");
+                            try sql.appendSlice(allocator, nd);
+                            try sql.appendSlice(allocator, "'");
+                        } else {
+                            try sql.appendSlice(allocator, nd);
                         }
                     } else {
                         try sql.appendSlice(allocator, " DROP DEFAULT");

@@ -42,6 +42,15 @@ const Users = @This();
         deleted_at,
         phone,
         bio,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                .deleted_at => true,
+                else => false,
+            };
+        }
     };
     pub const RelationEnum = enum {
         posts,
@@ -109,11 +118,13 @@ const Users = @This();
         return "users";
     }
 
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'email', email, 'name', name, 'bid', bid, 'password_hash', password_hash, 'is_active', is_active, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint, 'deleted_at', (extract(epoch from deleted_at) * 1000000)::bigint, 'phone', phone, 'bio', bio)";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO users (
             \\    email, name, bid, password_hash, is_active, phone, bio
-            \\) VALUES ($1, $2, $3, $4, COALESCE($5, 'true'), $6, $7)
+            \\) VALUES ($1, $2, $3, $4, COALESCE($5, true), $6, $7)
             \\RETURNING id
         ;
     }

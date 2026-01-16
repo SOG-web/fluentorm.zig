@@ -95,6 +95,16 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
     for (fields) |field| {
         try writer.print("        {s},\n", .{field.name});
     }
+    try writer.writeAll("\n        pub fn isDateTime(self: @This()) bool {\n");
+    try writer.writeAll("            return switch (self) {\n");
+    for (fields) |field| {
+        if (field.type == .timestamp or field.type == .timestamp_optional) {
+            try writer.print("                .{s} => true,\n", .{field.name});
+        }
+    }
+    try writer.writeAll("                else => false,\n");
+    try writer.writeAll("            };\n");
+    try writer.writeAll("        }\n");
     try writer.writeAll("    };\n");
 
     try writer.writeAll("    pub const RelationEnum = enum {\n");
@@ -266,14 +276,28 @@ pub fn generateUpdateInput(writer: anytype, fields: []const Field, allocator: st
 pub fn generateSQLMethods(writer: anytype, schema: TableSchema, struct_name: []const u8, fields: []const Field, allocator: std.mem.Allocator) !bool {
     _ = struct_name;
     // tableName - uses table name (snake_case) for SQL
+    // Generate json_all_fields_sql
+    var json_fields = std.ArrayList(u8){};
+    defer json_fields.deinit(allocator);
+    for (fields, 0..) |field, i| {
+        if (field.type == .timestamp or field.type == .timestamp_optional) {
+            try json_fields.writer(allocator).print("'{s}', (extract(epoch from {s}) * 1000000)::bigint", .{ field.name, field.name });
+        } else {
+            try json_fields.writer(allocator).print("'{s}', {s}", .{ field.name, field.name });
+        }
+        if (i < fields.len - 1) try json_fields.appendSlice(allocator, ", ");
+    }
+
     try writer.print(
         \\    // Model configuration
         \\    pub fn tableName() []const u8 {{
         \\        return "{s}";
         \\    }}
         \\
+        \\    pub const json_all_fields_sql = "jsonb_build_object({s})";
         \\
-    , .{schema.name});
+        \\
+    , .{ schema.name, json_fields.items });
 
     // insertSQL
     try generateInsertSQL(writer, schema, fields, allocator);
@@ -304,12 +328,12 @@ pub fn generateInsertSQL(writer: anytype, schema: TableSchema, fields: []const F
             try cols.append(arena_allocator, field.name);
 
             const param_str = try std.fmt.allocPrint(arena_allocator, "${d}", .{param_num});
-            if (field.create_input == .optional and field.default_value != null) {
-                if (utils.typeIsnumeric(field.type)) {
-                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
+            if (field.create_input == .optional and field.default_value != null and !std.mem.eql(u8, field.default_value.?, "skip")) {
+                if (utils.shouldQuoteDefault(field.type, field.default_value.?)) {
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, '{s}')", .{ param_num, field.default_value.? });
                     try params.append(arena_allocator, coalesce);
                 } else {
-                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, '{s}')", .{ param_num, field.default_value.? });
+                    const coalesce = try std.fmt.allocPrint(arena_allocator, "COALESCE(${d}, {s})", .{ param_num, field.default_value.? });
                     try params.append(arena_allocator, coalesce);
                 }
             } else {
@@ -1006,7 +1030,7 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
         // Map base fields
         try writer.writeAll("        // Map base fields\n");
         for (fields) |field| {
-            try writer.print("        result.{s} = row.get({s}, \"{s}\");\n", .{
+            try writer.print("        result.{s} = row.getCol({s}, \"{s}\");\n", .{
                 field.name,
                 field.type.toZigType(),
                 field.name,
@@ -1017,12 +1041,20 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
 
         // Parse JSONB relation field
         try writer.print("        // Parse JSONB relation: {s}\n", .{rel.field_name});
-        try writer.print("        const {s}_json = row.get(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
+        try writer.print("        const {s}_json = row.getCol(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
         try writer.print("        if ({s}_json) |json_str| {{\n", .{rel.field_name});
         if (rel.is_many) {
-            try writer.print("            result.{s} = std.json.parseFromSlice([]{s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+            try writer.print("            if (std.json.parseFromSlice([]{s}, allocator, json_str, .{{}})) |parsed| {{\n", .{rel.related_type});
+            try writer.print("                result.{s} = parsed.value;\n", .{rel.field_name});
+            try writer.writeAll("            } else |_| {\n");
+            try writer.print("                result.{s} = null;\n", .{rel.field_name});
+            try writer.writeAll("            }\n");
         } else {
-            try writer.print("            result.{s} = std.json.parseFromSlice({s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+            try writer.print("            if (std.json.parseFromSlice({s}, allocator, json_str, .{{}})) |parsed| {{\n", .{rel.related_type});
+            try writer.print("                result.{s} = parsed.value;\n", .{rel.field_name});
+            try writer.writeAll("            } else |_| {\n");
+            try writer.print("                result.{s} = null;\n", .{rel.field_name});
+            try writer.writeAll("            }\n");
         }
         try writer.writeAll("        } else {\n");
         try writer.print("            result.{s} = null;\n", .{rel.field_name});
@@ -1087,7 +1119,7 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
         // Map base fields
         try writer.writeAll("        // Map base fields\n");
         for (fields) |field| {
-            try writer.print("        result.{s} = row.get({s}, \"{s}\");\n", .{
+            try writer.print("        result.{s} = row.getCol({s}, \"{s}\");\n", .{
                 field.name,
                 field.type.toZigType(),
                 field.name,
@@ -1098,14 +1130,24 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
 
         // Parse all JSONB relation fields
         for (relations.items) |rel| {
-            try writer.print("        const {s}_json = row.get(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
+            try writer.print("        const {s}_json = row.getCol(?[]const u8, \"{s}\");\n", .{ rel.field_name, rel.field_name });
             try writer.print("        if ({s}_json) |json_str| {{\n", .{rel.field_name});
             if (rel.is_many) {
-                try writer.print("            result.{s} = std.json.parseFromSlice([]{s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+                try writer.print("            if (std.json.parseFromSlice([]{s}, allocator, json_str, .{{}})) |parsed| {{\n", .{rel.related_type});
+                try writer.print("                result.{s} = parsed.value;\n", .{rel.field_name});
+                try writer.writeAll("            } else |_| {\n");
+                try writer.print("                result.{s} = null;\n", .{rel.field_name});
+                try writer.writeAll("            }\n");
             } else {
-                try writer.print("            result.{s} = std.json.parseFromSlice({s}, allocator, json_str, .{{}}) catch null;\n", .{ rel.field_name, rel.related_type });
+                try writer.print("            if (std.json.parseFromSlice({s}, allocator, json_str, .{{}})) |parsed| {{\n", .{rel.related_type});
+                try writer.print("                result.{s} = parsed.value;\n", .{rel.field_name});
+                try writer.writeAll("            } else |_| {\n");
+                try writer.print("                result.{s} = null;\n", .{rel.field_name});
+                try writer.writeAll("            }\n");
             }
-            try writer.print("        }} else {{\n            result.{s} = null;\n        }}\n", .{rel.field_name});
+            try writer.writeAll("        } else {\n");
+            try writer.print("            result.{s} = null;\n", .{rel.field_name});
+            try writer.writeAll("        }\n");
         }
 
         try writer.writeAll("\n        return result;\n");

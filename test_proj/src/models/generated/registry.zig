@@ -39,6 +39,28 @@ pub const Tables = enum {
     categories,
     post_categories,
     comments,
+
+    pub fn isFieldDateTime(self: @This(), field_name: []const u8) bool {
+        return switch (self) {
+            .users => if (std.meta.stringToEnum(Users.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .posts => if (std.meta.stringToEnum(Posts.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .profiles => if (std.meta.stringToEnum(Profiles.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .categories => if (std.meta.stringToEnum(Categories.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .post_categories => if (std.meta.stringToEnum(PostCategories.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .comments => if (std.meta.stringToEnum(Comments.FieldEnum, field_name)) |f| f.isDateTime() else false,
+        };
+    }
+
+    pub fn jsonAllFieldsSql(self: @This()) []const u8 {
+        return switch (self) {
+            .users => Users.json_all_fields_sql,
+            .posts => Posts.json_all_fields_sql,
+            .profiles => Profiles.json_all_fields_sql,
+            .categories => Categories.json_all_fields_sql,
+            .post_categories => PostCategories.json_all_fields_sql,
+            .comments => Comments.json_all_fields_sql,
+        };
+    }
 };
 
 pub const TableFields = struct {

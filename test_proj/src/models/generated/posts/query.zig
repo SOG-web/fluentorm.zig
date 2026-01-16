@@ -45,6 +45,7 @@ const Self = @This();
  base_select_custom: bool = false,
  select_raw: bool = false,
  fill_base_select: bool = false,
+ owns_arena: bool = true,
 
   pub const WhereClause = struct {
       where_type: WhereClauseType = .@"and",
@@ -97,9 +98,10 @@ const Self = @This();
 
  /// Create a query builder using an existing ArenaAllocator.
  /// Ideal for http.zig request handlers where the arena is managed externally.
- pub fn initWithArena(arena_allocator: std.heap.ArenaAllocator) Self {
+ pub fn initWithArena(arena_allocator: *std.heap.ArenaAllocator) Self {
     return Self{
-       .arena = arena_allocator,
+       .arena = arena_allocator.*,
+       .owns_arena = false,
        .select_clauses = std.ArrayList([]const u8){},
        .where_clauses = std.ArrayList(WhereClauseInternal){},
        .order_clauses = std.ArrayList([]const u8){},
@@ -121,7 +123,9 @@ const Self = @This();
     self.having_clauses.deinit(self.arena.allocator());
     self.join_clauses.deinit(self.arena.allocator());
     self.includes_clauses.deinit(self.arena.allocator());
-    self.arena.deinit();
+    if (self.owns_arena) {
+        self.arena.deinit();
+    }
  }
 
  pub fn reset(self: *Self) void {
@@ -196,7 +200,8 @@ const Self = @This();
                         selects[i] = @tagName(field);
                     }
                     clause.select = selects;
-                }
+                }                clause.is_many = true;
+
             },
         }
         return clause;
@@ -561,30 +566,84 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
             try sql.writer(allocator).print("{s}.*, ", .{table_name});
         }
         for (self.join_clauses.items, 0..) |join_clause, j| {
-            if (join_clause.select.len == 1 and std.mem.eql(u8, join_clause.select[0], "*")) {
-                try sql.writer(allocator).print("jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
+            if (join_clause.is_many) {
+                try sql.writer(allocator).print("(SELECT COALESCE(jsonb_agg(", .{});
+
+                if (join_clause.select.len == 1 and std.mem.eql(u8, join_clause.select[0], "*")) {
+                    try sql.appendSlice(allocator, join_clause.join_table.jsonAllFieldsSql());
+                } else {
+                    try sql.writer(allocator).print("jsonb_build_object(", .{});
+                    for (join_clause.select, 0..) |sel, k| {
+                        try sql.writer(allocator).print("'{s}', ", .{sel});
+                        if (join_clause.join_table.isFieldDateTime(sel)) {
+                            try sql.writer(allocator).print("(extract(epoch from {s}) * 1000000)::bigint", .{sel});
+                        } else {
+                            try sql.writer(allocator).print("{s}", .{sel});
+                        }
+                        if (k < join_clause.select.len - 1) try sql.appendSlice(allocator, ", ");
+                    }
+                    try sql.appendSlice(allocator, ")");
+                }
+                try sql.writer(allocator).print("), '[]'::jsonb) FROM {s} WHERE {s}.{s} {s} {s}.{s}", .{
                     @tagName(join_clause.join_table),
                     @tagName(join_clause.join_table),
+                    join_clause.join_field.toString(),
+                    join_clause.join_operator.toSql(),
+                    table_name,
+                    join_clause.base_field.toString(),
                 });
-            } else if (join_clause.select.len == 1 and !std.mem.eql(u8, join_clause.select[0], "*")) {
-                self.base_select_custom = true;
-                try sql.writer(allocator).print("{s}.{s} AS {s}_{s}", .{
-                    @tagName(join_clause.join_table),
-                    join_clause.select[0],
-                    @tagName(join_clause.join_table),
-                    join_clause.select[0],
-                });
+
+                if (join_clause.predicates.len > 0) {
+                    var in_or_group = false;
+                    for (join_clause.predicates, 0..) |predicate, i| {
+                        const next_is_or = (i < join_clause.predicates.len - 1 and join_clause.predicates[i + 1].where_type == .@"or");
+                        if (i == 0) {
+                            try sql.appendSlice(allocator, " AND ");
+                            if (next_is_or) { try sql.appendSlice(allocator, "("); in_or_group = true; }
+                            try sql.appendSlice(allocator, predicate.sql);
+                            continue;
+                        }
+                        if (predicate.where_type == .@"and") {
+                            if (in_or_group) { try sql.appendSlice(allocator, ")"); in_or_group = false; }
+                            try sql.appendSlice(allocator, " AND ");
+                            if (next_is_or) { try sql.appendSlice(allocator, "("); in_or_group = true; }
+                            try sql.appendSlice(allocator, predicate.sql);
+                        } else {
+                            try sql.appendSlice(allocator, " OR ");
+                            try sql.appendSlice(allocator, predicate.sql);
+                            if (!next_is_or and in_or_group) { try sql.appendSlice(allocator, ")"); in_or_group = false; }
+                        }
+                    }
+                    if (in_or_group) try sql.appendSlice(allocator, ")");
+                }
+
+                try sql.writer(allocator).print(") AS {s}", .{@tagName(join_clause.join_table)});
             } else {
-                self.base_select_custom = true;
-                for (join_clause.select, 0..) |sel, k| {
+                if (join_clause.select.len == 1 and std.mem.eql(u8, join_clause.select[0], "*")) {
+                    try sql.writer(allocator).print("jsonb_strip_nulls(to_jsonb({s})) AS {s}", .{
+                        @tagName(join_clause.join_table),
+                        @tagName(join_clause.join_table),
+                    });
+                } else if (join_clause.select.len == 1 and !std.mem.eql(u8, join_clause.select[0], "*")) {
+                    self.base_select_custom = true;
                     try sql.writer(allocator).print("{s}.{s} AS {s}_{s}", .{
                         @tagName(join_clause.join_table),
-                        sel,
+                        join_clause.select[0],
                         @tagName(join_clause.join_table),
-                        sel,
+                        join_clause.select[0],
                     });
-                    if (k < join_clause.select.len - 1) {
-                        try sql.appendSlice(allocator, ", ");
+                } else {
+                    self.base_select_custom = true;
+                    for (join_clause.select, 0..) |sel, k| {
+                        try sql.writer(allocator).print("{s}.{s} AS {s}_{s}", .{
+                            @tagName(join_clause.join_table),
+                            sel,
+                            @tagName(join_clause.join_table),
+                            sel,
+                        });
+                        if (k < join_clause.select.len - 1) {
+                            try sql.appendSlice(allocator, ", ");
+                        }
                     }
                 }
             }
@@ -605,6 +664,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     // Process join clause
     if (self.join_clauses.items.len > 0) {
         for (self.join_clauses.items) |join_clause| {
+            if (join_clause.is_many) continue;
             try sql.writer(allocator).print("{s} {s} ON {s}.{s} {s} {s}.{s}", .{
                 join_clause.join_type.toSql(),
                 @tagName(join_clause.join_table),
@@ -692,7 +752,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
     // Handle soft deletes
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try sql.appendSlice(allocator, " WHERE deleted_at IS NULL");
+        try sql.writer(allocator).print(" WHERE {s}.deleted_at IS NULL", .{table_name});
         first_where = false;
     }
 
@@ -868,7 +928,7 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 /// ```
 pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
      comptime {
-        if (!std.mem.eql(u8, R.fromRow, undefined)) {
+        if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
         }
     }
@@ -932,7 +992,7 @@ pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.A
 /// ```
 pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
      comptime {
-        if (!std.mem.eql(u8, R.fromRow, undefined)) {
+        if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
         }
     }

@@ -147,6 +147,10 @@ pub fn typeIsnumeric(field_type: FieldType) bool {
     };
 }
 
+pub fn shouldQuoteDefault(field_type: FieldType, default_value: []const u8) bool {
+    return field_type.shouldQuoteDefault(default_value);
+}
+
 pub fn getFinalFields(allocator: std.mem.Allocator, schema: TableSchema) ![]Field {
     var fields = std.ArrayList(Field){};
     defer fields.deinit(allocator);

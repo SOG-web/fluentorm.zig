@@ -110,6 +110,29 @@ pub const FieldType = enum {
             else => false,
         };
     }
+
+    pub fn shouldQuoteDefault(self: FieldType, default_value: []const u8) bool {
+        // Booleans should not be quoted
+        if (self == .bool or self == .bool_optional) return false;
+
+        // Numbers should not be quoted
+        switch (self) {
+            .i16, .i16_optional, .i32, .i32_optional, .i64, .i64_optional, .f32, .f32_optional, .f64, .f64_optional => return false,
+            else => {},
+        }
+
+        // SQL functions or special values
+        if (std.mem.eql(u8, default_value, "true") or std.mem.eql(u8, default_value, "false")) return false;
+        if (std.mem.eql(u8, default_value, "null") or std.mem.eql(u8, default_value, "NULL")) return false;
+        if (std.mem.eql(u8, default_value, "CURRENT_TIMESTAMP")) return false;
+        if (std.mem.eql(u8, default_value, "NOW()")) return false;
+
+        // Function calls: something()
+        if (std.mem.indexOf(u8, default_value, "(") != null and std.mem.endsWith(u8, default_value, ")")) return false;
+
+        // Everything else likely needs quotes
+        return true;
+    }
 };
 
 pub const InputMode = enum {

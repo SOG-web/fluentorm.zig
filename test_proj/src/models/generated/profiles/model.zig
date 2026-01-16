@@ -36,6 +36,15 @@ const Profiles = @This();
         date_of_birth,
         created_at,
         updated_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .date_of_birth => true,
+                .created_at => true,
+                .updated_at => true,
+                else => false,
+            };
+        }
     };
     pub const RelationEnum = enum {
         user,
@@ -91,6 +100,8 @@ const Profiles = @This();
     pub fn tableName() []const u8 {
         return "profiles";
     }
+
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'user_id', user_id, 'bio', bio, 'avatar_url', avatar_url, 'website', website, 'location', location, 'date_of_birth', (extract(epoch from date_of_birth) * 1000000)::bigint, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint)";
 
     pub fn insertSQL() []const u8 {
         return

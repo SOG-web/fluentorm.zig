@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "created_at": 1768520375,
+  "created_at": 1768585253,
   "tables": [
     {
       "name": "users",
@@ -593,7 +593,7 @@
           "primary_key": false,
           "unique": false,
           "not_null": false,
-          "default_value": "gen_random_uuid()",
+          "default_value": "skip",
           "auto_generated": false,
           "auto_generate_type": "uuid"
         },

@@ -63,22 +63,26 @@ pub const UsersWithPosts = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.email = row.get([]const u8, "email");
-        result.name = row.get([]const u8, "name");
-        result.bid = row.get(?[]const u8, "bid");
-        result.password_hash = row.get([]const u8, "password_hash");
-        result.is_active = row.get(bool, "is_active");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
-        result.phone = row.get(?[]const u8, "phone");
-        result.bio = row.get(?[]const u8, "bio");
+        result.id = row.getCol([]const u8, "id");
+        result.email = row.getCol([]const u8, "email");
+        result.name = row.getCol([]const u8, "name");
+        result.bid = row.getCol(?[]const u8, "bid");
+        result.password_hash = row.getCol([]const u8, "password_hash");
+        result.is_active = row.getCol(bool, "is_active");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
+        result.phone = row.getCol(?[]const u8, "phone");
+        result.bio = row.getCol(?[]const u8, "bio");
 
         // Parse JSONB relation: posts
-        const posts_json = row.get(?[]const u8, "posts");
+        const posts_json = row.getCol(?[]const u8, "posts");
         if (posts_json) |json_str| {
-            result.posts = std.json.parseFromSlice([]Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice([]Posts, allocator, json_str, .{})) |parsed| {
+                result.posts = parsed.value;
+            } else |_| {
+                result.posts = null;
+            }
         } else {
             result.posts = null;
         }
@@ -143,22 +147,26 @@ pub const UsersWithComments = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.email = row.get([]const u8, "email");
-        result.name = row.get([]const u8, "name");
-        result.bid = row.get(?[]const u8, "bid");
-        result.password_hash = row.get([]const u8, "password_hash");
-        result.is_active = row.get(bool, "is_active");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
-        result.phone = row.get(?[]const u8, "phone");
-        result.bio = row.get(?[]const u8, "bio");
+        result.id = row.getCol([]const u8, "id");
+        result.email = row.getCol([]const u8, "email");
+        result.name = row.getCol([]const u8, "name");
+        result.bid = row.getCol(?[]const u8, "bid");
+        result.password_hash = row.getCol([]const u8, "password_hash");
+        result.is_active = row.getCol(bool, "is_active");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
+        result.phone = row.getCol(?[]const u8, "phone");
+        result.bio = row.getCol(?[]const u8, "bio");
 
         // Parse JSONB relation: comments
-        const comments_json = row.get(?[]const u8, "comments");
+        const comments_json = row.getCol(?[]const u8, "comments");
         if (comments_json) |json_str| {
-            result.comments = std.json.parseFromSlice([]Comments, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice([]Comments, allocator, json_str, .{})) |parsed| {
+                result.comments = parsed.value;
+            } else |_| {
+                result.comments = null;
+            }
         } else {
             result.comments = null;
         }
@@ -225,28 +233,36 @@ pub const UsersWithAllRelations = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.email = row.get([]const u8, "email");
-        result.name = row.get([]const u8, "name");
-        result.bid = row.get(?[]const u8, "bid");
-        result.password_hash = row.get([]const u8, "password_hash");
-        result.is_active = row.get(bool, "is_active");
-        result.created_at = row.get(i64, "created_at");
-        result.updated_at = row.get(i64, "updated_at");
-        result.deleted_at = row.get(?i64, "deleted_at");
-        result.phone = row.get(?[]const u8, "phone");
-        result.bio = row.get(?[]const u8, "bio");
+        result.id = row.getCol([]const u8, "id");
+        result.email = row.getCol([]const u8, "email");
+        result.name = row.getCol([]const u8, "name");
+        result.bid = row.getCol(?[]const u8, "bid");
+        result.password_hash = row.getCol([]const u8, "password_hash");
+        result.is_active = row.getCol(bool, "is_active");
+        result.created_at = row.getCol(i64, "created_at");
+        result.updated_at = row.getCol(i64, "updated_at");
+        result.deleted_at = row.getCol(?i64, "deleted_at");
+        result.phone = row.getCol(?[]const u8, "phone");
+        result.bio = row.getCol(?[]const u8, "bio");
 
         // Parse JSONB relations
-        const posts_json = row.get(?[]const u8, "posts");
+        const posts_json = row.getCol(?[]const u8, "posts");
         if (posts_json) |json_str| {
-            result.posts = std.json.parseFromSlice([]Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice([]Posts, allocator, json_str, .{})) |parsed| {
+                result.posts = parsed.value;
+            } else |_| {
+                result.posts = null;
+            }
         } else {
             result.posts = null;
         }
-        const comments_json = row.get(?[]const u8, "comments");
+        const comments_json = row.getCol(?[]const u8, "comments");
         if (comments_json) |json_str| {
-            result.comments = std.json.parseFromSlice([]Comments, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice([]Comments, allocator, json_str, .{})) |parsed| {
+                result.comments = parsed.value;
+            } else |_| {
+                result.comments = null;
+            }
         } else {
             result.comments = null;
         }

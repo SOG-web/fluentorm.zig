@@ -42,15 +42,19 @@ pub const PostCategoriesWithPosts = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.category_id = row.get([]const u8, "category_id");
-        result.created_at = row.get(i64, "created_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.category_id = row.getCol([]const u8, "category_id");
+        result.created_at = row.getCol(i64, "created_at");
 
         // Parse JSONB relation: post
-        const post_json = row.get(?[]const u8, "post");
+        const post_json = row.getCol(?[]const u8, "post");
         if (post_json) |json_str| {
-            result.post = std.json.parseFromSlice(Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Posts, allocator, json_str, .{})) |parsed| {
+                result.post = parsed.value;
+            } else |_| {
+                result.post = null;
+            }
         } else {
             result.post = null;
         }
@@ -94,15 +98,19 @@ pub const PostCategoriesWithCategories = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.category_id = row.get([]const u8, "category_id");
-        result.created_at = row.get(i64, "created_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.category_id = row.getCol([]const u8, "category_id");
+        result.created_at = row.getCol(i64, "created_at");
 
         // Parse JSONB relation: category
-        const category_json = row.get(?[]const u8, "category");
+        const category_json = row.getCol(?[]const u8, "category");
         if (category_json) |json_str| {
-            result.category = std.json.parseFromSlice(Categories, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Categories, allocator, json_str, .{})) |parsed| {
+                result.category = parsed.value;
+            } else |_| {
+                result.category = null;
+            }
         } else {
             result.category = null;
         }
@@ -148,21 +156,29 @@ pub const PostCategoriesWithAllRelations = struct {
         var result: @This() = undefined;
 
         // Map base fields
-        result.id = row.get([]const u8, "id");
-        result.post_id = row.get([]const u8, "post_id");
-        result.category_id = row.get([]const u8, "category_id");
-        result.created_at = row.get(i64, "created_at");
+        result.id = row.getCol([]const u8, "id");
+        result.post_id = row.getCol([]const u8, "post_id");
+        result.category_id = row.getCol([]const u8, "category_id");
+        result.created_at = row.getCol(i64, "created_at");
 
         // Parse JSONB relations
-        const post_json = row.get(?[]const u8, "post");
+        const post_json = row.getCol(?[]const u8, "post");
         if (post_json) |json_str| {
-            result.post = std.json.parseFromSlice(Posts, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Posts, allocator, json_str, .{})) |parsed| {
+                result.post = parsed.value;
+            } else |_| {
+                result.post = null;
+            }
         } else {
             result.post = null;
         }
-        const category_json = row.get(?[]const u8, "category");
+        const category_json = row.getCol(?[]const u8, "category");
         if (category_json) |json_str| {
-            result.category = std.json.parseFromSlice(Categories, allocator, json_str, .{}) catch null;
+            if (std.json.parseFromSlice(Categories, allocator, json_str, .{})) |parsed| {
+                result.category = parsed.value;
+            } else |_| {
+                result.category = null;
+            }
         } else {
             result.category = null;
         }

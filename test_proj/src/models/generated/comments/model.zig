@@ -40,6 +40,15 @@ const Comments = @This();
         created_at,
         updated_at,
         deleted_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                .deleted_at => true,
+                else => false,
+            };
+        }
     };
     pub const RelationEnum = enum {
         post,
@@ -103,11 +112,13 @@ const Comments = @This();
         return "comments";
     }
 
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'post_id', post_id, 'user_id', user_id, 'parent_id', parent_id, 'content', content, 'is_approved', is_approved, 'like_count', like_count, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint, 'deleted_at', (extract(epoch from deleted_at) * 1000000)::bigint)";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO comments (
             \\    post_id, user_id, parent_id, content, is_approved
-            \\) VALUES ($1, $2, COALESCE($3, 'gen_random_uuid()'), $4, COALESCE($5, 'true'))
+            \\) VALUES ($1, $2, $3, $4, COALESCE($5, true))
             \\RETURNING id
         ;
     }

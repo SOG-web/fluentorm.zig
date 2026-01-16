@@ -3,9 +3,8 @@ const std = @import("std");
 const pg = @import("pg");
 
 const Executor = @import("executor.zig").Executor;
-
-const Tables = @import("registry.zig").Tables;
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
+const Tables = @import("registry.zig").Tables;
 
 pub const JoinClause = struct {
     base_field: TableFieldsUnion,
@@ -15,6 +14,7 @@ pub const JoinClause = struct {
     join_table: Tables,
     predicates: []PredicateClause = &.{},
     select: []const []const u8 = &.{"*"},
+    is_many: bool = false,
 };
 
 pub const PredicateClause = struct {
@@ -616,8 +616,8 @@ pub fn onlyDeleted(self: anytype) void {
     self.include_deleted = true;
     const sql = std.fmt.allocPrint(
         self.arena.allocator(),
-        "deleted_at IS NOT NULL",
-        .{},
+        "{s}.deleted_at IS NOT NULL",
+        .{self.tablename()},
     ) catch return;
     self.where_clauses.append(self.arena.allocator(), .{
         .sql = sql,
@@ -652,6 +652,7 @@ pub fn hasCustomProjection(self: anytype) bool {
 pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
+    // std.debug.print("Executing fetchAs SQL: {s}\n", .{sql});
 
     var result = try db.queryOpts(sql, args, .{
         .column_names = true,

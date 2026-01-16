@@ -28,6 +28,13 @@ const PostCategories = @This();
         post_id,
         category_id,
         created_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                else => false,
+            };
+        }
     };
     pub const RelationEnum = enum {
         post,
@@ -80,6 +87,8 @@ const PostCategories = @This();
     pub fn tableName() []const u8 {
         return "post_categories";
     }
+
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'post_id', post_id, 'category_id', category_id, 'created_at', (extract(epoch from created_at) * 1000000)::bigint)";
 
     pub fn insertSQL() []const u8 {
         return
