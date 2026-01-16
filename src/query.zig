@@ -169,12 +169,21 @@ pub fn reset(self: anytype) void {
 
 pub fn select(self: anytype, fields: anytype) void {
     for (fields) |field| {
-        const _field = std.fmt.allocPrint(
-            self.arena.allocator(),
-            "{s}.{s}",
-            .{ self.tablename(), @tagName(field) },
-        ) catch return;
-        self.select_clauses.append(self.arena.allocator(), _field) catch return;
+        // Use fixed buffer with fallback to allocPrint for field references
+        var buf: [256]u8 = undefined;
+        const _field = std.fmt.bufPrint(&buf, "{s}.{s}", .{ self.tablename(), @tagName(field) }) catch blk: {
+            break :blk std.fmt.allocPrint(
+                self.arena.allocator(),
+                "{s}.{s}",
+                .{ self.tablename(), @tagName(field) },
+            ) catch return;
+        };
+        // If bufPrint succeeded, we need to allocate a copy for the ArrayList
+        const field_copy = if (buf[0..].ptr == _field.ptr)
+            self.arena.allocator().dupe(u8, _field) catch return
+        else
+            _field;
+        self.select_clauses.append(self.arena.allocator(), field_copy) catch return;
     }
 }
 
@@ -189,12 +198,21 @@ pub fn selectAggregate(
     field: anytype,
     alias: []const u8,
 ) void {
-    const _field = std.fmt.allocPrint(
-        self.arena.allocator(),
-        "{s}({s}.{s}) AS {s}",
-        .{ agg.toSql(), self.tablename(), @tagName(field), alias },
-    ) catch return;
-    self.select_clauses.append(self.arena.allocator(), _field) catch return;
+    // Use fixed buffer with fallback to allocPrint for aggregate expressions
+    var buf: [256]u8 = undefined;
+    const _field = std.fmt.bufPrint(&buf, "{s}({s}.{s}) AS {s}", .{ agg.toSql(), self.tablename(), @tagName(field), alias }) catch blk: {
+        break :blk std.fmt.allocPrint(
+            self.arena.allocator(),
+            "{s}({s}.{s}) AS {s}",
+            .{ agg.toSql(), self.tablename(), @tagName(field), alias },
+        ) catch return;
+    };
+    // If bufPrint succeeded, we need to allocate a copy for the ArrayList
+    const field_copy = if (buf[0..].ptr == _field.ptr)
+        self.arena.allocator().dupe(u8, _field) catch return
+    else
+        _field;
+    self.select_clauses.append(self.arena.allocator(), field_copy) catch return;
 }
 
 pub fn selectRaw(self: anytype, raw_sql: []const u8) void {
