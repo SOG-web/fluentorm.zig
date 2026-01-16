@@ -5,27 +5,30 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
-const Users = @import("users.zig");
-const Posts = @import("posts.zig");
+const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
+const Posts = @import("../posts/model.zig");
+const PostsQuery = @import("../posts/query.zig");
 
 const Comments = @This();
 
 // Fields
-id: []const u8,
-post_id: []const u8,
-user_id: []const u8,
-parent_id: ?[]const u8,
-content: []const u8,
-is_approved: bool,
-like_count: i32,
-created_at: i64,
-updated_at: i64,
-deleted_at: ?i64,
+    id: []const u8,
+    post_id: []const u8,
+    user_id: []const u8,
+    parent_id: ?[]const u8,
+    content: []const u8,
+    is_approved: bool,
+    like_count: i32,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
     pub const FieldEnum = enum {
         id,
         post_id,
@@ -37,8 +40,44 @@ deleted_at: ?i64,
         created_at,
         updated_at,
         deleted_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                .deleted_at => true,
+                else => false,
+            };
+        }
+    };
+    pub const RelationEnum = enum {
+        post,
+        user,
     };
 
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .post => .{ .name = "post", .type = .belongsTo, .foreign_table = .posts, .foreign_key = .{ .posts = .id }, .local_key = .{ .comments = .post_id } },
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .comments = .user_id } },
+        };
+    }
+
+    pub const PostsIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Posts.FieldEnum = &.{},
+        where: []const PostsQuery.WhereClause = &.{},
+    };
+
+    pub const UsersIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Users.FieldEnum = &.{},
+        where: []const UsersQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        post: PostsIncludeClauseInput,
+        user: UsersIncludeClauseInput,
+    };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -73,11 +112,13 @@ deleted_at: ?i64,
         return "comments";
     }
 
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'post_id', post_id, 'user_id', user_id, 'parent_id', parent_id, 'content', content, 'is_approved', is_approved, 'like_count', like_count, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint, 'deleted_at', (extract(epoch from deleted_at) * 1000000)::bigint)";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO comments (
             \\    post_id, user_id, parent_id, content, is_approved
-            \\) VALUES ($1, $2, COALESCE($3, gen_random_uuid()), $4, COALESCE($5, true))
+            \\) VALUES ($1, $2, $3, $4, COALESCE($5, true))
             \\RETURNING id
         ;
     }
@@ -164,9 +205,11 @@ deleted_at: ?i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Comments, UpdateInput, FieldEnum) {
-        return QueryBuilder(Comments, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init;
+
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -174,7 +217,7 @@ deleted_at: ?i64,
         id: [36]u8,
         post_id: [36]u8,
         user_id: [36]u8,
-        parent_id: ?[]const u8,
+        parent_id: ?[36]u8,
         content: []const u8,
         is_approved: bool,
         like_count: i32,
@@ -189,7 +232,7 @@ deleted_at: ?i64,
             .id = try pg.uuidToHex(&self.id[0..16].*),
             .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
             .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
-            .parent_id = self.parent_id,
+            .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
             .content = self.content,
             .is_approved = self.is_approved,
             .like_count = self.like_count,
@@ -204,7 +247,7 @@ deleted_at: ?i64,
         id: [36]u8,
         post_id: [36]u8,
         user_id: [36]u8,
-        parent_id: ?[]const u8,
+        parent_id: ?[36]u8,
         content: []const u8,
         is_approved: bool,
         like_count: i32,
@@ -219,7 +262,7 @@ deleted_at: ?i64,
             .id = try pg.uuidToHex(&self.id[0..16].*),
             .post_id = try pg.uuidToHex(&self.post_id[0..16].*),
             .user_id = try pg.uuidToHex(&self.user_id[0..16].*),
-            .parent_id = self.parent_id,
+            .parent_id = if (self.parent_id) |id| try pg.uuidToHex(&id[0..16].*) else null,
             .content = self.content,
             .is_approved = self.is_approved,
             .like_count = self.like_count,
@@ -261,9 +304,3 @@ deleted_at: ?i64,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Comments);
-
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }

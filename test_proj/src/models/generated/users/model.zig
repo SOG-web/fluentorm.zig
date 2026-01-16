@@ -5,28 +5,31 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
-const Comments = @import("comments.zig");
-const Posts = @import("posts.zig");
+const Comments = @import("../comments/model.zig");
+const CommentsQuery = @import("../comments/query.zig");
+const Posts = @import("../posts/model.zig");
+const PostsQuery = @import("../posts/query.zig");
 
 const Users = @This();
 
 // Fields
-id: []const u8,
-email: []const u8,
-name: []const u8,
-bid: ?[]const u8,
-password_hash: []const u8,
-is_active: bool,
-created_at: i64,
-updated_at: i64,
-deleted_at: ?i64,
-phone: ?[]const u8,
-bio: ?[]const u8,
+    id: []const u8,
+    email: []const u8,
+    name: []const u8,
+    bid: ?[]const u8,
+    password_hash: []const u8,
+    is_active: bool,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
+    phone: ?[]const u8,
+    bio: ?[]const u8,
     pub const FieldEnum = enum {
         id,
         email,
@@ -39,8 +42,44 @@ bio: ?[]const u8,
         deleted_at,
         phone,
         bio,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                .deleted_at => true,
+                else => false,
+            };
+        }
+    };
+    pub const RelationEnum = enum {
+        posts,
+        comments,
     };
 
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = .posts, .foreign_key = .{ .posts = .user_id }, .local_key = .{ .users = .id } },
+            .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = .comments, .foreign_key = .{ .comments = .user_id }, .local_key = .{ .users = .id } },
+        };
+    }
+
+    pub const PostsIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Posts.FieldEnum = &.{},
+        where: []const PostsQuery.WhereClause = &.{},
+    };
+
+    pub const CommentsIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Comments.FieldEnum = &.{},
+        where: []const CommentsQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        posts: PostsIncludeClauseInput,
+        comments: CommentsIncludeClauseInput,
+    };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -78,6 +117,8 @@ bio: ?[]const u8,
     pub fn tableName() []const u8 {
         return "users";
     }
+
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'email', email, 'name', name, 'bid', bid, 'password_hash', password_hash, 'is_active', is_active, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint, 'deleted_at', (extract(epoch from deleted_at) * 1000000)::bigint, 'phone', phone, 'bio', bio)";
 
     pub fn insertSQL() []const u8 {
         return
@@ -215,9 +256,11 @@ bio: ?[]const u8,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Users, UpdateInput, FieldEnum) {
-        return QueryBuilder(Users, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init;
+
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -316,9 +359,3 @@ bio: ?[]const u8,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Users);
-
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }

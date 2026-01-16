@@ -12,8 +12,18 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const pg_dep = b.dependency("pg", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const dotenv_dep = b.dependency("dotenv", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const fluentorm = fluentorm_dep.module("fluentorm");
+    const pg = pg_dep.module("pg");
+    const dotenv = dotenv_dep.module("dotenv");
 
     // Library module
     const mod = b.addModule("test_proj", .{
@@ -21,6 +31,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     mod.addImport("fluentorm", fluentorm);
+    mod.addImport("pg", pg);
+    mod.addImport("dotenv", dotenv);
 
     // Main executable
     const exe = b.addExecutable(.{
@@ -32,6 +44,8 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "test_proj", .module = mod },
                 .{ .name = "fluentorm", .module = fluentorm },
+                .{ .name = "pg", .module = pg },
+                .{ .name = "dotenv", .module = dotenv },
             },
         }),
     });

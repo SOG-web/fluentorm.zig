@@ -5,25 +5,27 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
-const Users = @import("users.zig");
+const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
 
 const Profiles = @This();
 
 // Fields
-id: []const u8,
-user_id: []const u8,
-bio: ?[]const u8,
-avatar_url: ?[]const u8,
-website: ?[]const u8,
-location: ?[]const u8,
-date_of_birth: ?i64,
-created_at: i64,
-updated_at: i64,
+    id: []const u8,
+    user_id: []const u8,
+    bio: ?[]const u8,
+    avatar_url: ?[]const u8,
+    website: ?[]const u8,
+    location: ?[]const u8,
+    date_of_birth: ?i64,
+    created_at: i64,
+    updated_at: i64,
     pub const FieldEnum = enum {
         id,
         user_id,
@@ -34,8 +36,35 @@ updated_at: i64,
         date_of_birth,
         created_at,
         updated_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .date_of_birth => true,
+                .created_at => true,
+                .updated_at => true,
+                else => false,
+            };
+        }
+    };
+    pub const RelationEnum = enum {
+        user,
     };
 
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .profiles = .user_id } },
+        };
+    }
+
+    pub const UsersIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Users.FieldEnum = &.{},
+        where: []const UsersQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        user: UsersIncludeClauseInput,
+    };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -71,6 +100,8 @@ updated_at: i64,
     pub fn tableName() []const u8 {
         return "profiles";
     }
+
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'user_id', user_id, 'bio', bio, 'avatar_url', avatar_url, 'website', website, 'location', location, 'date_of_birth', (extract(epoch from date_of_birth) * 1000000)::bigint, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint)";
 
     pub fn insertSQL() []const u8 {
         return
@@ -202,9 +233,11 @@ updated_at: i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Profiles, UpdateInput, FieldEnum) {
-        return QueryBuilder(Profiles, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init;
+
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -268,9 +301,3 @@ updated_at: i64,
         return Users.findById(db, allocator, self.user_id);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Profiles);
-
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }

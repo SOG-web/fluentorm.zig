@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const Env = @import("dotenv");
 
 pub const Config = struct {
     host: []const u8,
@@ -8,17 +9,76 @@ pub const Config = struct {
     username: []const u8,
     password: ?[]const u8,
 
-    pub fn fromEnv() Config {
-        return .{
-            .host = std.posix.getenv("FLUENT_DB_HOST") orelse "127.0.0.1",
-            .port = blk: {
-                const port_str = std.posix.getenv("FLUENT_DB_PORT") orelse "5432";
-                break :blk std.fmt.parseInt(u16, port_str, 10) catch 5432;
-            },
-            .database = std.posix.getenv("FLUENT_DB_NAME") orelse "postgres",
-            .username = std.posix.getenv("FLUENT_DB_USER") orelse "postgres",
-            .password = std.posix.getenv("FLUENT_DB_PASSWORD"),
+    /// Load configuration from environment variables.
+    /// If an Env instance is provided, it will be used to look up values (with fallback to process env).
+    /// Otherwise, only process environment variables are used.
+    pub fn fromEnvOwned(allocator: std.mem.Allocator, env: ?*Env) !Config {
+        const host = if (env) |e| blk: {
+            break :blk try allocator.dupe(u8, e.get("FLUENT_DB_HOST") orelse "127.0.0.1");
+        } else blk: {
+            break :blk std.process.getEnvVarOwned(allocator, "FLUENT_DB_HOST") catch |err| {
+                if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "127.0.0.1");
+                return err;
+            };
         };
+        errdefer allocator.free(host);
+
+        const port_str = if (env) |e| blk: {
+            break :blk e.get("FLUENT_DB_PORT") orelse "5432";
+        } else blk: {
+            const owned = std.process.getEnvVarOwned(allocator, "FLUENT_DB_PORT") catch |err| {
+                if (err == error.EnvironmentVariableNotFound) break :blk "5432";
+                return err;
+            };
+            defer allocator.free(owned);
+            break :blk owned;
+        };
+        const port = std.fmt.parseInt(u16, port_str, 10) catch 5432;
+
+        const database = if (env) |e| blk: {
+            break :blk try allocator.dupe(u8, e.get("FLUENT_DB_NAME") orelse "postgres");
+        } else blk: {
+            break :blk std.process.getEnvVarOwned(allocator, "FLUENT_DB_NAME") catch |err| {
+                if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "postgres");
+                return err;
+            };
+        };
+        errdefer allocator.free(database);
+
+        const username = if (env) |e| blk: {
+            break :blk try allocator.dupe(u8, e.get("FLUENT_DB_USER") orelse "postgres");
+        } else blk: {
+            break :blk std.process.getEnvVarOwned(allocator, "FLUENT_DB_USER") catch |err| {
+                if (err == error.EnvironmentVariableNotFound) break :blk try allocator.dupe(u8, "postgres");
+                return err;
+            };
+        };
+        errdefer allocator.free(username);
+
+        const password = if (env) |e| blk: {
+            const pw = e.get("FLUENT_DB_PASSWORD");
+            break :blk if (pw) |p| try allocator.dupe(u8, p) else null;
+        } else blk: {
+            break :blk std.process.getEnvVarOwned(allocator, "FLUENT_DB_PASSWORD") catch |err| {
+                if (err == error.EnvironmentVariableNotFound) break :blk null;
+                return err;
+            };
+        };
+
+        return .{
+            .host = host,
+            .port = port,
+            .database = database,
+            .username = username,
+            .password = password,
+        };
+    }
+
+    pub fn deinit(self: *Config, allocator: std.mem.Allocator) void {
+        allocator.free(self.host);
+        allocator.free(self.database);
+        allocator.free(self.username);
+        if (self.password) |p| allocator.free(p);
     }
 };
 
@@ -420,6 +480,7 @@ pub fn main() !void {
 
     // Parse command line arguments
     var migrations_dir: []const u8 = "migrations";
+    var env_file: []const u8 = ".env";
     var command: []const u8 = "up";
 
     var i: usize = 1; // Skip program name
@@ -429,13 +490,21 @@ pub fn main() !void {
             i += 1;
             if (i >= args.len) {
                 std.debug.print("Error: --migrations-dir requires a value\n", .{});
-                std.debug.print("Usage: fluent-migrate [--migrations-dir <dir>] [up|status|down]\n", .{});
+                std.debug.print("Usage: fluent-migrate [OPTIONS] [command]\n", .{});
                 return error.InvalidArgument;
             }
             migrations_dir = args[i];
+        } else if (std.mem.eql(u8, arg, "--env-file") or std.mem.eql(u8, arg, "-e")) {
+            i += 1;
+            if (i >= args.len) {
+                std.debug.print("Error: --env-file requires a value\n", .{});
+                std.debug.print("Usage: fluent-migrate [OPTIONS] [command]\n", .{});
+                return error.InvalidArgument;
+            }
+            env_file = args[i];
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             std.debug.print("FluentORM Migration Runner\n", .{});
-            std.debug.print("\nUsage: fluent-migrate [--migrations-dir <dir>] [command]\n", .{});
+            std.debug.print("\nUsage: fluent-migrate [OPTIONS] [command]\n", .{});
             std.debug.print("\nCommands:\n", .{});
             std.debug.print("  up         Run pending migrations (default)\n", .{});
             std.debug.print("  status     Show migration status\n", .{});
@@ -443,26 +512,41 @@ pub fn main() !void {
             std.debug.print("  rollback   Alias for down\n", .{});
             std.debug.print("\nOptions:\n", .{});
             std.debug.print("  -d, --migrations-dir <dir>  Directory containing migration files (default: migrations)\n", .{});
-            std.debug.print("  -h, --help                 Show this help message\n", .{});
+            std.debug.print("  -e, --env-file <path>       Path to .env file (default: .env in current directory)\n", .{});
+            std.debug.print("  -h, --help                  Show this help message\n", .{});
             std.debug.print("\nEnvironment Variables:\n", .{});
             std.debug.print("  FLUENT_DB_HOST     Database host (default: 127.0.0.1)\n", .{});
             std.debug.print("  FLUENT_DB_PORT     Database port (default: 5432)\n", .{});
             std.debug.print("  FLUENT_DB_NAME     Database name (default: postgres)\n", .{});
             std.debug.print("  FLUENT_DB_USER     Database user (default: postgres)\n", .{});
             std.debug.print("  FLUENT_DB_PASSWORD Database password\n", .{});
+            std.debug.print("\nThe .env file is loaded first, with process environment variables as fallback.\n", .{});
             return;
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Positional argument - assume it's the command
             command = arg;
         } else {
             std.debug.print("Unknown option: {s}\n", .{arg});
-            std.debug.print("Usage: fluent-migrate [--migrations-dir <dir>] [up|status|down]\n", .{});
+            std.debug.print("Usage: fluent-migrate [OPTIONS] [up|status|down]\n", .{});
             return error.InvalidArgument;
         }
         i += 1;
     }
 
-    const config = Config.fromEnv();
+    // Initialize dotenv - use_process_env=true means it falls back to process env if .env not found
+    var env = Env.initWithPath(allocator, env_file, 1024 * 1024, true) catch |err| blk: {
+        // If the .env file is not found, continue with process environment only
+        if (err == error.FileNotFound) {
+            std.debug.print("Note: .env file not found at '{s}', using process environment variables only.\n", .{env_file});
+            break :blk null;
+        }
+        std.debug.print("Error loading .env file: {}\n", .{err});
+        return err;
+    };
+    defer if (env) |*e| e.deinit();
+
+    var config = try Config.fromEnvOwned(allocator, if (env) |*e| e else null);
+    defer config.deinit(allocator);
 
     std.debug.print("Connecting to PostgreSQL at {s}:{d}/{s}...\n", .{
         config.host,

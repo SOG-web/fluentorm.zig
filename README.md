@@ -7,17 +7,18 @@ A schema-first, type-safe ORM for Zig with PostgreSQL support. Define your datab
 - ✅ **Schema-First Design**: Define database schemas using Zig's type-safe TableSchema API
 - ✅ **Automatic Code Generation**: Generate Zig models with full CRUD operations
 - ✅ **SQL Migration Generation**: Auto-generate PostgreSQL CREATE TABLE statements
-- ✅ **Database Migrations**: Built-in migration runner with checksum verification and transactional execution (working but still needs some advancment)
+- 🚧 **Database Migrations**: Built-in migration runner with checksum verification and transactional execution (multi-level rollback support is still in progress)
 - ✅ **Type-Safe Query Builder**: Fluent API for building SQL queries with compile-time field validation
 - ✅ **Relationship Support**: Define and query relationships (one-to-many, many-to-one, one-to-one)
+- ✅ **Eager Loading with IntelliSense**: Load relations via `include()` with full IDE autocomplete using explicit relation types
 - ✅ **Transaction Support**: Built-in transaction handling with rollback on error
 - ✅ **Soft Deletes**: Optional soft-delete functionality with `deleted_at` timestamps
 - ✅ **JSON Response Helpers**: Auto-generate JSON-safe response types with UUID conversion
 
 ## Quick Links
 
-📖 **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete tutorial for new users  
-📚 **[Documentation](#documentation)** - In-depth guides for all features  
+📖 **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete tutorial for new users
+📚 **[Documentation](#documentation)** - In-depth guides for all features
 💡 **[Examples](test_proj/)** - Code examples and patterns
 
 ## Installation
@@ -197,6 +198,7 @@ const std = @import("std");
 const pg = @import("pg");
 const models = @import("models/generated/root.zig");
 
+const Executor = models.Executor;
 const Users = models.Users;
 const Posts = models.Posts;
 
@@ -220,8 +222,11 @@ pub fn main() !void {
     });
     defer pool.deinit();
 
+    // Create an executor for pool access
+    const db = Executor.fromPool(&pool);
+
     // Create a user
-    const user_id = try Users.insert(&pool, allocator, .{
+    const user_id = try Users.insert(db, allocator, .{
         .email = "alice@example.com",
         .name = "Alice",
         .password_hash = "hashed_password",
@@ -233,12 +238,12 @@ pub fn main() !void {
     defer query.deinit();
 
     const users = try query
-        .where(.{ .field = .email, .operator = .eq, .value = "$1" })
-        .fetch(&pool, allocator, .{"alice@example.com"});
+        .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
+        .fetch(db, allocator, .{"alice@example.com"});
     defer allocator.free(users);
 
     // Get user with hasMany relationship
-    if (try Users.findById(&pool, allocator, user_id)) |user| {
+    if (try Users.findById(db, allocator, user_id)) |user| {
         defer allocator.free(user);
 
         // Fetch related posts using hasMany

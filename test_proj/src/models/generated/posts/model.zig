@@ -5,26 +5,29 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
-const Users = @import("users.zig");
-const Comments = @import("comments.zig");
+const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
+const Comments = @import("../comments/model.zig");
+const CommentsQuery = @import("../comments/query.zig");
 
 const Posts = @This();
 
 // Fields
-id: []const u8,
-title: []const u8,
-content: []const u8,
-user_id: []const u8,
-is_published: bool,
-view_count: i32,
-created_at: i64,
-updated_at: i64,
-deleted_at: ?i64,
+    id: []const u8,
+    title: []const u8,
+    content: []const u8,
+    user_id: []const u8,
+    is_published: bool,
+    view_count: i32,
+    created_at: i64,
+    updated_at: i64,
+    deleted_at: ?i64,
     pub const FieldEnum = enum {
         id,
         title,
@@ -35,8 +38,44 @@ deleted_at: ?i64,
         created_at,
         updated_at,
         deleted_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                .deleted_at => true,
+                else => false,
+            };
+        }
+    };
+    pub const RelationEnum = enum {
+        user,
+        comments,
     };
 
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .posts = .user_id } },
+            .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = .comments, .foreign_key = .{ .comments = .post_id }, .local_key = .{ .posts = .id } },
+        };
+    }
+
+    pub const UsersIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Users.FieldEnum = &.{},
+        where: []const UsersQuery.WhereClause = &.{},
+    };
+
+    pub const CommentsIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const Comments.FieldEnum = &.{},
+        where: []const CommentsQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        user: UsersIncludeClauseInput,
+        comments: CommentsIncludeClauseInput,
+    };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -66,6 +105,8 @@ deleted_at: ?i64,
     pub fn tableName() []const u8 {
         return "posts";
     }
+
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'title', title, 'content', content, 'user_id', user_id, 'is_published', is_published, 'view_count', view_count, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint, 'deleted_at', (extract(epoch from deleted_at) * 1000000)::bigint)";
 
     pub fn insertSQL() []const u8 {
         return
@@ -151,9 +192,11 @@ deleted_at: ?i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Posts, UpdateInput, FieldEnum) {
-        return QueryBuilder(Posts, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init;
+
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -234,9 +277,3 @@ deleted_at: ?i64,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Posts);
-
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }

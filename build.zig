@@ -12,6 +12,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const dotenv = b.dependency("dotenv", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    fluentzig.addImport("pg", pg.module("pg"));
+    fluentzig.addImport("dotenv", dotenv.module("dotenv"));
 
     // Generator executable - Standalone model generator
     const gen_exe = b.addExecutable(.{
@@ -23,6 +30,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "fluentorm", .module = fluentzig },
                 .{ .name = "pg", .module = pg.module("pg") },
+                .{ .name = "dotenv", .module = dotenv.module("dotenv") },
             },
         }),
     });
@@ -39,6 +47,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "fluentorm", .module = fluentzig },
                 .{ .name = "pg", .module = pg.module("pg") },
+                .{ .name = "dotenv", .module = dotenv.module("dotenv") },
             },
         }),
     });
@@ -47,6 +56,9 @@ pub fn build(b: *std.Build) void {
 
     // Migration directory option
     const migrations_dir = b.option([]const u8, "migrations-dir", "Directory containing migration files") orelse "migrations";
+
+    // Env file option
+    const env_file = b.option([]const u8, "env-file", "Path to .env file") orelse ".env";
 
     // Run step for local testing
     const run_cmd = b.addRunArtifact(gen_exe);
@@ -64,6 +76,7 @@ pub fn build(b: *std.Build) void {
     migrate_cmd.step.dependOn(b.getInstallStep());
 
     migrate_cmd.addArgs(&.{ "--migrations-dir", migrations_dir });
+    migrate_cmd.addArgs(&.{ "--env-file", env_file });
 
     if (b.args) |args| {
         migrate_cmd.addArgs(args);

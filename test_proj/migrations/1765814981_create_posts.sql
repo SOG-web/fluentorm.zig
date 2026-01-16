@@ -3,10 +3,10 @@
 -- Type: create_table
 
 CREATE TABLE IF NOT EXISTS posts (
-  id UUID PRIMARY KEY DEFAULT 'gen_random_uuid()',
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   content TEXT NOT NULL,
-  user_id UUID NOT NULL DEFAULT 'gen_random_uuid()',
+  user_id UUID NOT NULL DEFAULT gen_random_uuid(),
   is_published BOOLEAN NOT NULL DEFAULT false,
   view_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

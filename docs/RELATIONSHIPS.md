@@ -6,6 +6,8 @@ This guide details how to define and use relationships between tables using Flue
 
 Relationships define how tables reference each other using foreign keys. FluentORM generates helper methods for navigating between related models, making it easy to fetch associated data.
 
+FluentORM uses **efficient correlated subqueries with JSONB aggregation** for `hasMany` relationships to prevent Cartesian products and maintain query performance.
+
 ## Defining Relationships
 
 FluentORM provides **convenience methods** for common relationship types, plus the generic `t.foreign()` method for advanced use cases.
@@ -94,16 +96,6 @@ pub fn build(t: *TableSchema) void {
         .references_table = "users",
         .on_delete = .cascade,
     });
-
-    // Or using generic foreign() method
-    // t.foreign(.{
-    //     .name = "post_author",
-    //     .column = "user_id",
-    //     .references_table = "users",
-    //     .references_column = "id",
-    //     .relationship_type = .many_to_one,
-    //     .on_delete = .cascade,
-    // });
 }
 ```
 
@@ -131,7 +123,7 @@ ON DELETE CASCADE
 ```zig
 // Fetch the user who authored this post
 const author = try post.fetchPostAuthor(&pool, allocator);
-defer allocator.free(author);
+defer if (author) |a| allocator.free(a);
 ```
 
 ### One-to-Many (hasMany)
@@ -148,7 +140,7 @@ pub fn build(t: *TableSchema) void {
 
     // Define one-to-many relationship using hasMany()
     // Note: The FK constraint is in the posts table, not here
-    // This is metadata for generating fetch methods
+    // This is metadata for generating fetch methods and includes
     t.hasMany(.{
         .name = "user_posts",
         .foreign_table = "posts",
@@ -184,7 +176,7 @@ defer allocator.free(comments);
 | `foreign_table`  | string | The child table that has the FK                    |
 | `foreign_column` | string | The FK column in the child table                   |
 
-**Note**: `hasMany()` does not create a FK constraint. The FK constraint should be defined in the child table using `belongsTo()` or `foreign()`.
+> [!NOTE] > `hasMany()` does not create a FK constraint. The FK constraint should be defined in the child table using `belongsTo()` or `foreign()`.
 
 #### Define Multiple hasMany at Once
 
@@ -215,16 +207,6 @@ pub fn build(t: *TableSchema) void {
         .references_table = "users",
         .on_delete = .cascade,
     });
-
-    // Or using generic foreign() method
-    // t.foreign(.{
-    //     .name = "profile_user",
-    //     .column = "user_id",
-    //     .references_table = "users",
-    //     .references_column = "id",
-    //     .relationship_type = .one_to_one,
-    //     .on_delete = .cascade,
-    // });
 }
 ```
 
@@ -249,7 +231,7 @@ defer if (user) |u| allocator.free(u);
 
 ### Many-to-Many (manyToMany)
 
-Many-to-many relationships require a junction (join) table. Use `manyToMany()` to define the relationship on the junction table, or use `belongsTo()` for each side.
+Many-to-many relationships require a junction (join) table. Use `manyToMany()` to define the relationship on the junction table.
 
 **Example**: Posts can have multiple categories, and categories can have multiple posts.
 
@@ -274,14 +256,6 @@ pub fn build(t: *TableSchema) void {
         .references_table = "categories",
         .references_column = "id",
     });
-
-    // Or using belongsTo (equivalent)
-    // t.belongsTo(.{
-    //     .name = "post_category_post",
-    //     .column = "post_id",
-    //     .references_table = "posts",
-    //     .on_delete = .cascade,
-    // });
 }
 ```
 
@@ -304,7 +278,7 @@ var query = PostCategory.query();
 defer query.deinit();
 
 const post_cats = try query
-    .where(.{ .field = .post_id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .post_id, .operator = .eq, .value = .{ .string = "$1" } })
     .fetch(&pool, allocator, .{post_id});
 defer allocator.free(post_cats);
 
@@ -313,6 +287,176 @@ for (post_cats) |pc| {
         defer allocator.free(cat);
         std.debug.print("Category: {s}\n", .{cat.name});
     }
+}
+```
+
+## Efficient hasMany Implementation
+
+### How hasMany Prevents Cartesian Products
+
+FluentORM uses **correlated subqueries with JSONB aggregation** instead of traditional JOINs for `hasMany` relationships. This prevents Cartesian products that would otherwise multiply rows.
+
+**Traditional JOIN (❌ Creates Cartesian Product)**:
+
+```sql
+-- If a user has 10 posts and 100 comments, this returns 1000 rows
+SELECT users.*, posts.*, comments.*
+FROM users
+LEFT JOIN posts ON posts.user_id = users.id
+LEFT JOIN comments ON comments.user_id = users.id
+WHERE users.id = $1
+```
+
+**FluentORM Subquery Approach (✅ Returns 1 Row)**:
+
+```sql
+SELECT users.*,
+  (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'id', id,
+    'title', title,
+    'created_at', (extract(epoch from created_at) * 1000000)::bigint,
+    ...
+  )), '[]'::jsonb)
+   FROM posts
+   WHERE posts.user_id = users.id) AS posts,
+  (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'id', id,
+    'content', content,
+    ...
+  )), '[]'::jsonb)
+   FROM comments
+   WHERE comments.user_id = users.id) AS comments
+FROM users
+WHERE users.id = $1
+```
+
+### Timestamp Handling in JSON Aggregations
+
+Timestamps are automatically cast to **microsecond epochs** in JSONB aggregations for compatibility with Zig's `i64` type:
+
+```sql
+'created_at', (extract(epoch from created_at) * 1000000)::bigint
+```
+
+This ensures proper JSON serialization and parsing without data loss.
+
+### Custom Field Selection
+
+You can specify which fields to include in relationships:
+
+```zig
+var query = Users.query();
+defer query.deinit();
+
+_ = query.include(.{
+    .posts = .{
+        .model_name = .posts,
+        .select = &.{ "id", "title", "created_at" }  // Only these fields
+    }
+});
+
+// Generate SQL with only selected fields in the jsonb_build_object
+const users = try query.fetchWithRel(
+    Users.Rel.UsersWithPosts,
+    &pool,
+    allocator,
+    .{}
+);
+```
+
+### Filtering Related Data
+
+Add WHERE clauses to included relationships:
+
+```zig
+var query = Users.query();
+defer query.deinit();
+
+_ = query.include(.{
+    .comments = .{
+        .model_name = .comments,
+        .where = &.{.{
+            .where_type = .@"and",
+            .field = .is_approved,
+            .operator = .eq,
+            .value = .{ .boolean = true }
+        }}
+    }
+});
+
+const users = try query.fetchWithRel(
+    Users.Rel.UsersWithComments,
+    &pool,
+    allocator,
+    .{}
+);
+// Only approved comments are loaded
+```
+
+## Multiple Includes
+
+Load multiple relationships in a single query efficiently:
+
+### Using fetchWithRel (Typed Parsing)
+
+```zig
+var query = Users.query();
+defer query.deinit();
+
+_ = query
+    .include(.{ .posts = .{ .model_name = .posts } })
+    .include(.{ .comments = .{ .model_name = .comments } });
+
+const users = try query.fetchWithRel(
+    Users.Rel.UsersWithAllRelations,  // Generated type with all relations
+    &pool,
+    allocator,
+    .{}
+);
+defer allocator.free(users);
+
+for (users) |user| {
+    std.debug.print("User: {s}\n", .{user.name});
+
+    if (user.posts) |posts| {
+        std.debug.print("  Posts: {d}\n", .{posts.len});
+        for (posts) |post| {
+            std.debug.print("    - {s}\n", .{post.title});
+        }
+    }
+
+    if (user.comments) |comments| {
+        std.debug.print("  Comments: {d}\n", .{comments.len});
+    }
+}
+```
+
+### Using fetchAs (Custom Projections)
+
+For custom handling or when you only need specific fields:
+
+```zig
+const UserWithJsonRelations = struct {
+    name: []const u8,
+    posts: ?[]const u8,     // Raw JSONB string
+    comments: ?[]const u8,  // Raw JSONB string
+};
+
+var query = Users.query();
+defer query.deinit();
+
+_ = query
+    .select(&.{.name})
+    .include(.{ .posts = .{ .model_name = .posts } })
+    .include(.{ .comments = .{ .model_name = .comments } });
+
+const results = try query.fetchAs(UserWithJsonRelations, &pool, allocator, .{});
+defer allocator.free(results);
+
+for (results) |res| {
+    std.debug.print("User: {s}\n", .{res.name});
+    std.debug.print("  Posts JSON: {s}\n", .{res.posts orelse "[]"});
+    std.debug.print("  Comments JSON: {s}\n", .{res.comments orelse "[]"});
 }
 ```
 
@@ -378,7 +522,7 @@ const pg = @import("pg");
 const models = @import("models/generated/root.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){}();
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -463,17 +607,113 @@ For more complex queries involving relationships, use the query builder:
 
 ```zig
 // Find all posts by a specific user
-var query = models.Post.query();
+var query = models.Posts.query();
 defer query.deinit();
 
 const user_posts = try query
-    .where(.{ .field = .user_id, .operator = .eq, .value = "$1" })
+    .where(.{ .field = .user_id, .operator = .eq, .value = .{ .string = "$1" } })
     .orderBy(.{ .field = .created_at, .direction = .desc })
     .fetch(&pool, allocator, .{user_id});
 defer allocator.free(user_posts);
 ```
 
 See [QUERY.md](QUERY.md) for more details on the query builder.
+
+## Explicit Relation Types (rel.zig)
+
+FluentORM generates explicit relation types in `rel.zig` for each model. These types provide **full IntelliSense support** for eager-loaded relations.
+
+### Generated Types
+
+For a model with relations, the generator creates:
+
+```
+src/models/generated/users/
+├── model.zig    # Base model
+├── rel.zig      # Relation types (UsersWithPosts, etc.)
+└── query.zig    # Query builder
+```
+
+Each `rel.zig` contains:
+
+| Type                    | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `UsersWithPosts`        | User model with `posts: ?[]Posts` field       |
+| `UsersWithComments`     | User model with `comments: ?[]Comments` field |
+| `UsersWithAllRelations` | User model with all relation fields           |
+
+### Accessing Relation Types
+
+Access via the model's `Rel` namespace:
+
+```zig
+const Users = @import("models/generated/users/model.zig");
+
+// Individual relation types
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+const UsersWithComments = Users.Rel.UsersWithComments;
+
+// All relations at once
+const UsersWithAllRelations = Users.Rel.UsersWithAllRelations;
+```
+
+Or via the registry:
+
+```zig
+const Client = @import("models/generated/registry.zig").Client;
+
+const UsersWithPosts = Client.Rel.Users.UsersWithPosts;
+```
+
+### Using with Eager Loading
+
+Use `fetchWithRel` or `firstWithRel` to load relations with automatic JSONB parsing:
+
+```zig
+const UsersWithPosts = Users.Rel.UsersWithPosts;
+
+var query = Users.query();
+defer query.deinit();
+
+// Eager load posts
+const users = try query
+    .include(.{ .posts = .{ .model_name = .posts } })
+    .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
+defer allocator.free(users);
+
+for (users) |user| {
+    std.debug.print("User: {s}\n", .{user.name});
+
+    // Full IntelliSense on user.posts!
+    if (user.posts) |posts| {
+        for (posts) |post| {
+            std.debug.print("  - {s}\n", .{post.title});
+        }
+    }
+}
+```
+
+### Helper Methods
+
+Each relation type provides:
+
+| Method                    | Description                                            |
+| ------------------------- | ------------------------------------------------------ |
+| `fromBase(model)`         | Convert base model to relation type (relations = null) |
+| `toBase(self)`            | Extract base model from relation type                  |
+| `fromRow(row, allocator)` | Parse database row with JSONB relation columns         |
+
+```zig
+// Convert base model to relation type
+const base_user = try Users.findById(&pool, allocator, id);
+var user_with_posts = UsersWithPosts.fromBase(base_user.?);
+
+// Manually set posts if needed
+user_with_posts.posts = some_posts;
+
+// Convert back to base model
+const base = user_with_posts.toBase();
+```
 
 ## Type Safety
 

@@ -33,6 +33,8 @@ pub fn build(t: *TableSchema) void {
         .name = "parent_id",
         .not_null = false,
         .create_input = .optional,
+        .auto_generated = false,
+        .default_value = "skip",
     });
 
     // Comment content - required

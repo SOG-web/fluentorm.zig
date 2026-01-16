@@ -5,25 +5,27 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const BaseModel = @import("base.zig").BaseModel;
-const QueryBuilder = @import("query.zig").QueryBuilder;
-const Transaction = @import("transaction.zig").Transaction;
+const BaseModel = @import("../base.zig").BaseModel;
+const Query = @import("query.zig");
+const Relationship = @import("../base.zig").Relationship;
+const Tables = @import("../registry.zig").Tables;
 
 // Related models
-const PostCategories = @import("post_categories.zig");
+const PostCategories = @import("../post_categories/model.zig");
+const PostCategoriesQuery = @import("../post_categories/query.zig");
 
 const Categories = @This();
 
 // Fields
-id: []const u8,
-name: []const u8,
-slug: []const u8,
-description: ?[]const u8,
-color: ?[]const u8,
-sort_order: i32,
-is_active: bool,
-created_at: i64,
-updated_at: i64,
+    id: []const u8,
+    name: []const u8,
+    slug: []const u8,
+    description: ?[]const u8,
+    color: ?[]const u8,
+    sort_order: i32,
+    is_active: bool,
+    created_at: i64,
+    updated_at: i64,
     pub const FieldEnum = enum {
         id,
         name,
@@ -34,8 +36,34 @@ updated_at: i64,
         is_active,
         created_at,
         updated_at,
+
+        pub fn isDateTime(self: @This()) bool {
+            return switch (self) {
+                .created_at => true,
+                .updated_at => true,
+                else => false,
+            };
+        }
+    };
+    pub const RelationEnum = enum {
+        posts,
     };
 
+    pub fn getRelation(rel: RelationEnum) Relationship {
+        return switch (rel) {
+            .posts => .{ .name = "posts", .type = .hasMany, .foreign_table = .post_categories, .foreign_key = .{ .post_categories = .category_id }, .local_key = .{ .categories = .id } },
+        };
+    }
+
+    pub const PostCategoriesIncludeClauseInput = struct {
+        model_name: RelationEnum,
+        select: []const PostCategories.FieldEnum = &.{},
+        where: []const PostCategoriesQuery.WhereClause = &.{},
+    };
+
+    pub const IncludeClauseInput = union(RelationEnum) {
+        posts: PostCategoriesIncludeClauseInput,
+    };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -71,11 +99,13 @@ updated_at: i64,
         return "categories";
     }
 
+    pub const json_all_fields_sql = "jsonb_build_object('id', id, 'name', name, 'slug', slug, 'description', description, 'color', color, 'sort_order', sort_order, 'is_active', is_active, 'created_at', (extract(epoch from created_at) * 1000000)::bigint, 'updated_at', (extract(epoch from updated_at) * 1000000)::bigint)";
+
     pub fn insertSQL() []const u8 {
         return
             \\INSERT INTO categories (
             \\    name, slug, description, color, sort_order, is_active
-            \\) VALUES ($1, $2, $3, COALESCE($4, '#3B82F6'), COALESCE($5, 0), COALESCE($6, true))
+            \\) VALUES ($1, $2, $3, COALESCE($4, ''#3B82F6''), COALESCE($5, 0), COALESCE($6, true))
             \\RETURNING id
         ;
     }
@@ -200,9 +230,11 @@ updated_at: i64,
 
     pub const fromRow = base.fromRow;
 
-    pub fn query() QueryBuilder(Categories, UpdateInput, FieldEnum) {
-        return QueryBuilder(Categories, UpdateInput, FieldEnum).init();
-    }
+    pub const query = Query.init;
+
+    pub const queryWithArena = Query.initWithArena;
+
+    pub const queryWithAllocator = Query.initWithAllocator;
 
 
     /// JSON-safe response struct with UUIDs as hex strings
@@ -278,9 +310,3 @@ updated_at: i64,
         return try list.toOwnedSlice(allocator);
     }
 
-    // Transaction support
-    pub const TransactionType = Transaction(Categories);
-
-    pub fn beginTransaction(conn: *pg.Conn) !TransactionType {
-        return TransactionType.begin(conn);
-    }
