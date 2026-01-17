@@ -1,7 +1,21 @@
 pub const Alter = @import("schema.zig").Alter;
+pub const err = @import("error.zig");
+pub const OrmError = err.OrmError;
+pub const PgError = err.PgError;
+pub const ErrorCode = err.ErrorCode;
+pub const Result = err.Result;
+pub const extractPgError = err.extractPgError;
+pub const toOrmError = err.toOrmError;
+pub const logError = err.logError;
+
+// Executor and result types
+const executor = @import("executor.zig");
+pub const Executor = executor.Executor;
+pub const QueryResult = executor.QueryResult;
+pub const RowResult = executor.RowResult;
+pub const ExecResult = executor.ExecResult;
 pub const AutoGenerateType = @import("schema.zig").AutoGenerateType;
 pub const diff = @import("diff.zig");
-pub const Executor = @import("executor.zig").Executor;
 pub const Field = @import("schema.zig").Field;
 pub const FieldType = @import("schema.zig").FieldType;
 pub const Index = @import("schema.zig").Index;

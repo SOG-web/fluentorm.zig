@@ -37,87 +37,159 @@ pub fn main() !void {
     std.debug.print("Seeding data...\n", .{});
 
     // Clear existing data (optional, but good for a clean example)
-    try models.Comments.truncate(db);
+    try models.Comments.truncate(db).unwrap();
     std.debug.print("Truncated comments\n", .{});
-    try models.Posts.truncate(db);
+    try models.Posts.truncate(db).unwrap();
     std.debug.print("Truncated posts\n", .{});
-    try models.Users.truncate(db);
+    try models.Users.truncate(db).unwrap();
     std.debug.print("Truncated users\n", .{});
 
     std.debug.print("Seeding new data...\n", .{});
 
-    const user1_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user1_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "rou",
         .email = "rou@example.com",
         .password_hash = "hashed_password",
         .bid = "PRO_USER",
         .is_active = true,
     });
+
+    const user1_id = switch (user1_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(user1_id);
 
-    const user2_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user2_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "alice",
         .email = "alice@example.com",
         .password_hash = "hashed_password",
         .bid = null,
         .is_active = true,
     });
+
+    const user2_id = switch (user2_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(user2_id);
 
-    const user3_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user3_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "bob",
         .email = "bob@example.com",
         .password_hash = "hashed_password",
         .bid = "LITE_USER",
         .is_active = false,
     });
+
+    const user3_id = switch (user3_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(user3_id);
 
     const user1_hex = try pg.uuidToHex(&user1_id[0..16].*);
 
     std.debug.print("User ID: {s}\n", .{user1_hex});
 
-    const post1_id = try models.Posts.insert(db, allocator, models.Posts.CreateInput{
+    const post1_result = models.Posts.insert(db, allocator, models.Posts.CreateInput{
         .title = "Hello Zig",
         .content = "Zig is awesome!",
         .user_id = &user1_hex,
         .is_published = true,
     });
+
+    const post1_id = switch (post1_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(post1_id);
 
     const user2_hex = try pg.uuidToHex(&user2_id[0..16].*);
-    const post2_id = try models.Posts.insert(db, allocator, models.Posts.CreateInput{
+    const post2_result = models.Posts.insert(db, allocator, models.Posts.CreateInput{
         .title = "Post by Alice",
         .content = "I'm Alice",
         .user_id = &user2_hex,
         .is_published = true,
     });
+
+    const post2_id = switch (post2_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(post2_id);
 
     const post1_hex = try pg.uuidToHex(&post1_id[0..16].*);
 
-    const comment1_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+    const comment1_result = models.Comments.insert(db, allocator, models.Comments.CreateInput{
         .post_id = &post1_hex,
         .user_id = &user1_hex,
         .content = "This is a comment by rou",
         .is_approved = true,
     });
+
+    const comment1_id = switch (comment1_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(comment1_id);
 
-    const comment2_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+    const comment2_result = models.Comments.insert(db, allocator, models.Comments.CreateInput{
         .post_id = &post1_hex,
         .user_id = &user1_hex,
         .content = "Another one",
         .is_approved = false,
     });
+
+    const comment2_id = switch (comment2_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(comment2_id);
 
-    const comment3_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
+    const comment3_result = models.Comments.insert(db, allocator, models.Comments.CreateInput{
         .post_id = &post1_hex,
         .user_id = &user1_hex,
         .content = "Another one approved",
         .is_approved = true,
     });
+
+    const comment3_id = switch (comment3_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err;
+        },
+    };
+
     defer allocator.free(comment3_id);
 
     // 3. Query with Include
@@ -394,7 +466,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Commit the transaction
@@ -420,7 +492,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Rollback the transaction
@@ -447,7 +519,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "MULTI_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
@@ -458,7 +530,7 @@ pub fn main() !void {
             .content = "This post is part of a transaction",
             .user_id = &tx_user_hex,
             .is_published = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_post_id);
 
         const tx_post_hex = try pg.uuidToHex(&tx_post_id[0..16].*);
@@ -469,7 +541,7 @@ pub fn main() !void {
             .user_id = &tx_user_hex,
             .content = "This comment is part of a transaction",
             .is_approved = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_comment_id);
 
         // Commit all operations
@@ -508,7 +580,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
@@ -519,7 +591,7 @@ pub fn main() !void {
             .content = "This post will be rolled back",
             .user_id = &tx_user_hex,
             .is_published = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_post_id);
 
         // Rollback all operations
@@ -552,7 +624,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "QUERY_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user1_id);
 
         const tx_user2_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
@@ -561,7 +633,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "QUERY_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user2_id);
 
         // Query within transaction
@@ -595,7 +667,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Try to create a duplicate email (should fail)
@@ -607,11 +679,18 @@ pub fn main() !void {
             .is_active = true,
         });
 
-        if (duplicate_result) |dup_id| {
+        const duplicate_id = switch (duplicate_result) {
+            .ok => |id| id,
+            .err => |err| {
+                std.debug.print("Expected error on duplicate: {any}\n", .{err});
+                err.log();
+                return;
+            },
+        };
+
+        if (duplicate_id) |dup_id| {
             allocator.free(dup_id);
             std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
-        } else |err| {
-            std.debug.print("Expected error on duplicate: {any}\n", .{err});
         }
 
         // Rollback after error
