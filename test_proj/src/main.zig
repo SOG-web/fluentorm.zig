@@ -700,8 +700,8 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "tx_error@example.com" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
-        std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users.len});
+        const tx_users = try verify_query.count(tx.executor(), .{});
+        std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users});
     }
 
     // 19. Test Auto-Rollback on deinit
@@ -727,8 +727,8 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_auto_rollback_user" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
-        std.debug.print("Users after auto-rollback: {d} (Expected 0)\n", .{tx_users.len});
+        const tx_users = try verify_query.count(db, .{});
+        std.debug.print("Users after auto-rollback: {d} (Expected 0)\n", .{tx_users});
     }
 
     std.debug.print("\n🎉 All transaction tests completed!\n", .{});
