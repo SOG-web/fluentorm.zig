@@ -232,23 +232,37 @@ pub fn generateStructDefinition(writer: anytype) !void {
 }
 
 pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator) !void {
-    try writer.writeAll(
-        \\    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
-        \\        const rel_tag = std.meta.activeTag(rel);
-        \\        const relation = Model.getRelation(rel_tag);
-        \\
-        \\        var clause = JoinClause{
-        \\            .join_type = JoinType.left,
-        \\            .join_table = relation.foreign_table,
-        \\            .join_field = relation.foreign_key,
-        \\            .join_operator = .eq,
-        \\            .base_field = relation.local_key,
-        \\            .predicates = &.{},
-        \\            .select = &.{"*"},
-        \\        };
-        \\
-        \\        switch (rel) {
-    );
+    var has_rels = false;
+    for (schema.relationships.items) |rel| {
+        if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
+        has_rels = true;
+        break;
+    }
+    if (!has_rels) {
+        for (schema.has_many_relationships.items) |rel| {
+            if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
+            has_rels = true;
+            break;
+        }
+    }
+
+    try writer.print(
+        \\\\    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
+        \\\\        const rel_tag = std.meta.activeTag(rel);
+        \\\\        const relation = Model.getRelation(rel_tag);
+        \\\\\n
+        \\\\        {s} clause = JoinClause{
+        \\\\            .join_type = JoinType.left,
+        \\\\            .join_table = relation.foreign_table,
+        \\\\            .join_field = relation.foreign_key,
+        \\\\            .join_operator = .eq,
+        \\\\            .base_field = relation.local_key,
+        \\\\            .predicates = &.{},
+        \\\\            .select = &.{"*"},
+        \\\\        };
+        \\\\\n
+        \\\\        switch (rel) {
+    , .{if (has_rels) "var" else "const"});
 
     const body =
         \\                // Construct the where clause from rel into an sql string
@@ -273,8 +287,6 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         \\                }
     ;
 
-    var has_rels = false;
-
     for (schema.relationships.items) |rel| {
         if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
         const field_name = try utils.relationshipToFieldName(allocator, rel);
@@ -283,7 +295,6 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         try writer.print("            .{s} => |r| {{\n", .{field_name});
         try writer.writeAll(body);
         try writer.writeAll("\n            },\n");
-        has_rels = true;
     }
 
     for (schema.has_many_relationships.items) |rel| {
@@ -298,7 +309,6 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         try writer.writeAll(body);
         try writer.writeAll("                clause.is_many = true;\n");
         try writer.writeAll("\n            },\n");
-        has_rels = true;
     }
 
     if (!has_rels) {
