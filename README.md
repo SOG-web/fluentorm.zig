@@ -52,6 +52,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Migration directory option - users can override this
+    const migrations_dir = b.option([]const u8, "migrations-dir", "Directory containing migration files") orelse "migrations";
+
+    // Skip migrations option
+    const skip_migrations = b.option(bool, "skip-migrations", "Skip generating SQL migrations") orelse false;
+
     // Get the fluentorm dependency
     const fluentorm_dep = b.dependency("fluentorm", .{
         .target = target,
@@ -78,6 +84,11 @@ pub fn build(b: *std.Build) void {
     const gen_exe = fluentorm_dep.artifact("fluentzig-gen");
     const gen_cmd = b.addRunArtifact(gen_exe);
     gen_cmd.addArgs(&.{ "schemas", "src/models/generated" });
+    if (!skip_migrations) {
+        gen_cmd.addArg(migrations_dir);
+    } else {
+        gen_cmd.addArg("--skip-migrations");
+    }
     gen_step.dependOn(&gen_cmd.step);
 
     // Step 2: Run the generated runner to create model files
@@ -181,10 +192,17 @@ zig build generate
 zig build generate-models
 ```
 
+To generate only models without SQL migrations, use:
+
+```bash
+zig build generate -Dskip-migrations=true
+zig build generate-models
+```
+
 This creates:
 
-- `schemas/registry.zig` - Auto-imports all your schema files
-- `schemas/runner.zig` - Runner that generates models
+- `schemas/registry.zig` - Auto-imports all schema files
+- `schemas/runner.zig` - Script to generate models (user runs this via build.zig)
 - `src/models/generated/users.zig` - User model with CRUD operations
 - `src/models/generated/posts.zig` - Post model with CRUD operations
 - `src/models/generated/base.zig` - Base model utilities
