@@ -149,16 +149,15 @@ const Self = @This();
     pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
         const rel_tag = std.meta.activeTag(rel);
         const relation = Model.getRelation(rel_tag);
-
         var clause = JoinClause{
             .join_type = JoinType.left,
-            .join_table = relation.foreign_table,
-            .join_field = relation.foreign_key,
-            .join_operator = .eq,
-            .base_field = relation.local_key,
-            .predicates = &.{},
-            .select = &.{"*"},
-        };
+           .join_table = relation.foreign_table,
+           .join_field = relation.foreign_key,
+           .join_operator = .eq,
+          .base_field = relation.local_key,
+           .predicates = &.{},
+           .select = &.{"*"},
+       };
 
         switch (rel) {            .user => |r| {
                 // Construct the where clause from rel into an sql string

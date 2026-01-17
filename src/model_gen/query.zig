@@ -246,23 +246,25 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         }
     }
 
-    try writer.print(
-        \\\\    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
-        \\\\        const rel_tag = std.meta.activeTag(rel);
-        \\\\        const relation = Model.getRelation(rel_tag);
-        \\\\\n
-        \\\\        {s} clause = JoinClause{
-        \\\\            .join_type = JoinType.left,
-        \\\\            .join_table = relation.foreign_table,
-        \\\\            .join_field = relation.foreign_key,
-        \\\\            .join_operator = .eq,
-        \\\\            .base_field = relation.local_key,
-        \\\\            .predicates = &.{},
-        \\\\            .select = &.{"*"},
-        \\\\        };
-        \\\\\n
-        \\\\        switch (rel) {
-    , .{if (has_rels) "var" else "const"});
+    try writer.writeAll(
+        \\    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
+        \\        const rel_tag = std.meta.activeTag(rel);
+        \\        const relation = Model.getRelation(rel_tag);
+        \\
+    );
+    try writer.print("        {s} clause = JoinClause{{\n", .{if (has_rels) "var" else "const"});
+    try writer.writeAll(
+        \\            .join_type = JoinType.left,
+        \\           .join_table = relation.foreign_table,
+        \\           .join_field = relation.foreign_key,
+        \\           .join_operator = .eq,
+        \\          .base_field = relation.local_key,
+        \\           .predicates = &.{},
+        \\           .select = &.{"*"},
+        \\       };
+        \\
+        \\        switch (rel) {
+    );
 
     const body =
         \\                // Construct the where clause from rel into an sql string
