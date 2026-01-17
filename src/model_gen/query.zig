@@ -253,7 +253,7 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         \\
     );
     if (!has_rels) {
-        writer.writeAll("_ = self;\n");
+        try writer.writeAll("_ = self;\n");
     }
     try writer.print("        {s} clause = JoinClause{{\n", .{if (has_rels) "var" else "const"});
     try writer.writeAll(
