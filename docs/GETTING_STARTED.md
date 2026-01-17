@@ -49,6 +49,9 @@ pub fn build(b: *std.Build) void {
     // Migration directory option (customizable)
     const migrations_dir = b.option([]const u8, "migrations-dir", "Directory containing migration files") orelse "migrations";
 
+    // Skip migrations option
+    const skip_migrations = b.option(bool, "skip-migrations", "Skip generating SQL migrations") orelse false;
+
     // Get FluentORM dependency
     const fluentorm_dep = b.dependency("fluentorm", .{
         .target = target,
@@ -74,7 +77,12 @@ pub fn build(b: *std.Build) void {
     const gen_step = b.step("generate", "Generate registry and runner");
     const gen_exe = fluentorm_dep.artifact("fluentzig-gen");
     const gen_cmd = b.addRunArtifact(gen_exe);
-    gen_cmd.addArgs(&.{ "schemas", "src/models/generated", migrations_dir });
+    gen_cmd.addArgs(&.{ "schemas", "src/models/generated" });
+    if (!skip_migrations) {
+        gen_cmd.addArg(migrations_dir);
+    } else {
+        gen_cmd.addArg("--skip-migrations");
+    }
     gen_step.dependOn(&gen_cmd.step);
 
     // Step 2: Generate models
@@ -166,6 +174,16 @@ Run the generation commands:
 ```bash
 # Generate registry and runner
 zig build generate
+
+# Generate model files
+zig build generate-models
+```
+
+To generate only models without SQL migrations:
+
+```bash
+# Generate registry and runner (skip migrations)
+zig build generate -Dskip-migrations=true
 
 # Generate model files
 zig build generate-models

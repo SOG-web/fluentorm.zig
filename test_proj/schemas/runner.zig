@@ -1,10 +1,12 @@
 const std = @import("std");
-const registry = @import("registry.zig");
+
 const fluentorm = @import("fluentorm");
 const sql_generator = fluentorm.sql_generator;
 const model_generator = fluentorm.model_generator;
 const snapshot = fluentorm.snapshot;
 const diff = fluentorm.diff;
+
+const registry = @import("registry.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -47,7 +49,7 @@ pub fn main() !void {
                 allocator.free(generated_files);
             }
 
-            std.debug.print("Generated {d} migration file(s):\n", .{generated_files.len});
+            std.debug.print("Generated{d} migration file(s):\n", .{generated_files.len});
             for (generated_files) |f| {
                 std.debug.print("  - {s}\n", .{f});
             }

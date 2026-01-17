@@ -7,6 +7,9 @@ pub fn build(b: *std.Build) void {
     // Migration directory option - users can override this
     const migrations_dir = b.option([]const u8, "migrations-dir", "Directory containing migration files") orelse "migrations";
 
+    // Skip migrations option
+    const skip_migrations = b.option(bool, "skip-migrations", "Skip generating SQL migrations") orelse false;
+
     // Get the fluentorm dependency (which brings pg.zig transitively)
     const fluentorm_dep = b.dependency("fluentorm", .{
         .target = target,
@@ -63,11 +66,16 @@ pub fn build(b: *std.Build) void {
     }
 
     // Generate step - uses the fluentzig-gen CLI from the dependency
-    // Step 1: Generate registry.zig and runner.zig
+    // Step 1: Generate registry and runner from schemas
     const gen_step = b.step("generate", "Generate registry and runner from schemas");
     const gen_exe = fluentorm_dep.artifact("fluentzig-gen");
     const gen_cmd = b.addRunArtifact(gen_exe);
-    gen_cmd.addArgs(&.{ "schemas", "src/models/generated", migrations_dir });
+    gen_cmd.addArgs(&.{ "schemas", "src/models/generated" });
+    if (!skip_migrations) {
+        gen_cmd.addArg(migrations_dir);
+    } else {
+        gen_cmd.addArg("--skip-migrations");
+    }
     gen_step.dependOn(&gen_cmd.step);
 
     // Step 2: Run the generated runner to create model files
