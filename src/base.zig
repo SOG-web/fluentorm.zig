@@ -38,10 +38,6 @@ pub fn BaseModel(comptime T: type) type {
     const CountResult = err.Result(i64);
 
     return struct {
-        // =========================================================================
-        // Truncate
-        // =========================================================================
-
         /// Truncates the table (removes all data but keeps structure)
         /// Returns OrmError on failure for detailed error info
         pub fn truncate(db: Executor) VoidResult {
@@ -74,10 +70,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // TableExists (unchanged - uses query directly)
-        // =========================================================================
-
         /// Checks if the table exists
         pub fn tableExists(db: Executor) !bool {
             if (!@hasDecl(T, "tableName")) {
@@ -96,10 +88,6 @@ pub fn BaseModel(comptime T: type) type {
             defer result.deinit();
             return false; // TODO: parse result
         }
-
-        // =========================================================================
-        // FindById
-        // =========================================================================
 
         /// Find a record by ID
         /// Returns OrmError on failure for detailed error info
@@ -151,10 +139,6 @@ pub fn BaseModel(comptime T: type) type {
                 },
             };
         }
-
-        // =========================================================================
-        // FindAll
-        // =========================================================================
 
         /// Find all records (optionally filtered by deleted_at)
         /// Returns OrmError on failure for detailed error info
@@ -213,10 +197,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // Insert
-        // =========================================================================
-
         /// Insert a new record using CreateInput type
         /// Returns Result with either the ID or detailed OrmError
         pub fn insert(db: Executor, allocator: std.mem.Allocator, data: anytype) InsertResult {
@@ -255,10 +235,6 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
-
-        // =========================================================================
-        // InsertMany (uses direct connection access)
-        // =========================================================================
 
         /// Insert multiple new records in a single query
         /// Returns Result with either the IDs or detailed OrmError
@@ -398,10 +374,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // InsertAndReturn
-        // =========================================================================
-
         /// Insert a new record and return the full model
         /// Returns Result with either the model or detailed OrmError
         pub fn insertAndReturn(db: Executor, allocator: std.mem.Allocator, data: anytype) ModelResult {
@@ -457,10 +429,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // Update
-        // =========================================================================
-
         /// Update an existing record
         /// Returns OrmError on failure for detailed error info
         pub fn update(db: Executor, id: []const u8, data: anytype) VoidResult {
@@ -492,10 +460,6 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
-
-        // =========================================================================
-        // UpdateAndReturn
-        // =========================================================================
 
         /// Update an existing record and return the full updated model
         /// Returns Result with either the model or detailed OrmError
@@ -552,10 +516,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // Upsert
-        // =========================================================================
-
         /// Upsert (insert or update) a record
         /// Returns Result with either the ID or detailed OrmError
         pub fn upsert(db: Executor, allocator: std.mem.Allocator, data: anytype) InsertResult {
@@ -594,10 +554,6 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
-
-        // =========================================================================
-        // UpsertAndReturn
-        // =========================================================================
 
         /// Upsert (insert or update) a record and return the full model
         /// Returns Result with either the model or detailed OrmError
@@ -654,10 +610,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // SoftDelete
-        // =========================================================================
-
         /// Soft delete a record (sets deleted_at timestamp)
         /// Returns OrmError on failure for detailed error info
         pub fn softDelete(db: Executor, id: []const u8) VoidResult {
@@ -693,10 +645,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        // =========================================================================
-        // HardDelete
-        // =========================================================================
-
         /// Hard delete a record (permanently removes from database)
         /// Returns OrmError on failure for detailed error info
         pub fn hardDelete(db: Executor, id: []const u8) VoidResult {
@@ -728,10 +676,6 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
-
-        // =========================================================================
-        // Count
-        // =========================================================================
 
         /// Count records in the table
         /// Returns Result with either the count or detailed OrmError
@@ -774,10 +718,6 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
-
-        // =========================================================================
-        // Utility
-        // =========================================================================
 
         /// From row
         pub fn fromRow(row: anytype, allocator: std.mem.Allocator) !T {
