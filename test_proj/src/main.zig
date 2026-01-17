@@ -37,40 +37,67 @@ pub fn main() !void {
     std.debug.print("Seeding data...\n", .{});
 
     // Clear existing data (optional, but good for a clean example)
-    try models.Comments.truncate(db);
+    try models.Comments.truncate(db).unwrap();
     std.debug.print("Truncated comments\n", .{});
-    try models.Posts.truncate(db);
+    try models.Posts.truncate(db).unwrap();
     std.debug.print("Truncated posts\n", .{});
-    try models.Users.truncate(db);
+    try models.Users.truncate(db).unwrap();
     std.debug.print("Truncated users\n", .{});
 
     std.debug.print("Seeding new data...\n", .{});
 
-    const user1_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user1_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "rou",
         .email = "rou@example.com",
         .password_hash = "hashed_password",
         .bid = "PRO_USER",
         .is_active = true,
     });
+
+    const user1_id = switch (user1_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err.err.?;
+        },
+    };
+
     defer allocator.free(user1_id);
 
-    const user2_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user2_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "alice",
         .email = "alice@example.com",
         .password_hash = "hashed_password",
         .bid = null,
         .is_active = true,
     });
+
+    const user2_id = switch (user2_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err.err.?;
+        },
+    };
+
     defer allocator.free(user2_id);
 
-    const user3_id = try models.Users.insert(db, allocator, models.Users.CreateInput{
+    const user3_result = models.Users.insert(db, allocator, models.Users.CreateInput{
         .name = "bob",
         .email = "bob@example.com",
         .password_hash = "hashed_password",
         .bid = "LITE_USER",
         .is_active = false,
     });
+
+    const user3_id = switch (user3_result) {
+        .ok => |id| id,
+        .err => |err| {
+            std.debug.print("Error: {any}", .{err});
+            return err.err.?;
+        },
+    };
+
     defer allocator.free(user3_id);
 
     const user1_hex = try pg.uuidToHex(&user1_id[0..16].*);
@@ -82,7 +109,7 @@ pub fn main() !void {
         .content = "Zig is awesome!",
         .user_id = &user1_hex,
         .is_published = true,
-    });
+    }).unwrap();
     defer allocator.free(post1_id);
 
     const user2_hex = try pg.uuidToHex(&user2_id[0..16].*);
@@ -91,7 +118,7 @@ pub fn main() !void {
         .content = "I'm Alice",
         .user_id = &user2_hex,
         .is_published = true,
-    });
+    }).unwrap();
     defer allocator.free(post2_id);
 
     const post1_hex = try pg.uuidToHex(&post1_id[0..16].*);
@@ -101,7 +128,7 @@ pub fn main() !void {
         .user_id = &user1_hex,
         .content = "This is a comment by rou",
         .is_approved = true,
-    });
+    }).unwrap();
     defer allocator.free(comment1_id);
 
     const comment2_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
@@ -109,7 +136,7 @@ pub fn main() !void {
         .user_id = &user1_hex,
         .content = "Another one",
         .is_approved = false,
-    });
+    }).unwrap();
     defer allocator.free(comment2_id);
 
     const comment3_id = try models.Comments.insert(db, allocator, models.Comments.CreateInput{
@@ -117,7 +144,7 @@ pub fn main() !void {
         .user_id = &user1_hex,
         .content = "Another one approved",
         .is_approved = true,
-    });
+    }).unwrap();
     defer allocator.free(comment3_id);
 
     // 3. Query with Include
@@ -129,9 +156,7 @@ pub fn main() !void {
         .field = .name,
         .operator = .eq,
         .value = .{ .string = "rou" },
-    });
-
-    _ = query.include(.{
+    }).include(.{
         .comments = .{
             .model_name = .comments,
             .where = &.{
@@ -151,7 +176,7 @@ pub fn main() !void {
         db,
         arena_allocator,
         .{},
-    );
+    ).unwrap();
 
     for (users_with_comments) |u| {
         const id_hex = try pg.uuidToHex(u.id);
@@ -169,7 +194,7 @@ pub fn main() !void {
     std.debug.print("\n--- Testing fetch() ---\n", .{});
     var query_fetch = models.Users.query();
     defer query_fetch.deinit();
-    const all_users = try query_fetch.fetch(db, arena_allocator, .{});
+    const all_users = try query_fetch.fetch(db, arena_allocator, .{}).unwrap();
     std.debug.print("Found {d} users via fetch().\n", .{all_users.len});
     for (all_users) |u| {
         std.debug.print(" - User: {s} (Email: {s})\n", .{ u.name, u.email });
@@ -188,7 +213,7 @@ pub fn main() !void {
         .select(&.{.name})
         .selectRaw("(SELECT count(*) FROM comments WHERE comments.user_id = users.id) AS comment_count");
 
-    const summaries = try query_as.fetchAs(UserSummary, db, arena_allocator, .{});
+    const summaries = try query_as.fetchAs(UserSummary, db, arena_allocator, .{}).unwrap();
     for (summaries) |s| {
         std.debug.print("Summary -> User: {s}, Comments: {d}\n", .{ s.name, s.comment_count });
     }
@@ -214,7 +239,7 @@ pub fn main() !void {
         },
     });
 
-    const results = try query_as_rel.fetchAs(UserWithJsonComments, db, arena_allocator, .{});
+    const results = try query_as_rel.fetchAs(UserWithJsonComments, db, arena_allocator, .{}).unwrap();
     for (results) |res| {
         std.debug.print("User: {s}\n", .{res.name});
         if (res.comments) |json| {
@@ -235,7 +260,7 @@ pub fn main() !void {
         db,
         arena_allocator,
         .{},
-    );
+    ).unwrap();
 
     for (multi_results) |u| {
         std.debug.print("User: {s}\n", .{u.name});
@@ -265,7 +290,7 @@ pub fn main() !void {
         .include(.{ .posts = .{ .model_name = .posts } })
         .include(.{ .comments = .{ .model_name = .comments } });
 
-    const full_json_results = try query_full_as.fetchAs(UserFullJson, db, arena_allocator, .{});
+    const full_json_results = try query_full_as.fetchAs(UserFullJson, db, arena_allocator, .{}).unwrap();
     for (full_json_results) |res| {
         std.debug.print("User: {s}\n", .{res.name});
         std.debug.print("  Posts JSON: {s}\n", .{res.posts orelse "[]"});
@@ -279,21 +304,21 @@ pub fn main() !void {
     var query_in = models.Users.query();
     defer query_in.deinit();
     _ = query_in.whereIn(.name, &.{ "rou", "alice" });
-    const users_in = try query_in.fetch(db, arena_allocator, .{});
+    const users_in = try query_in.fetch(db, arena_allocator, .{}).unwrap();
     std.debug.print("whereInResult: {d} users found (Expected 2)\n", .{users_in.len});
 
     // whereNull
     var query_null = models.Users.query();
     defer query_null.deinit();
     _ = query_null.whereNull(.bid);
-    const users_null = try query_null.fetch(db, arena_allocator, .{});
+    const users_null = try query_null.fetch(db, arena_allocator, .{}).unwrap();
     std.debug.print("whereNullResult: {d} users found (Expected 1 - Alice)\n", .{users_null.len});
 
     // whereNotNull
     var query_not_null = models.Users.query();
     defer query_not_null.deinit();
     _ = query_not_null.whereNotNull(.bid);
-    const users_not_null = try query_not_null.fetch(db, arena_allocator, .{});
+    const users_not_null = try query_not_null.fetch(db, arena_allocator, .{}).unwrap();
     std.debug.print("whereNotNullResult: {d} users found (Expected 2 - rou, bob)\n", .{users_not_null.len});
 
     // 9. Test Aggregates: count, exists, sum, min, max
@@ -301,26 +326,26 @@ pub fn main() !void {
 
     var count_query = models.Users.query();
     defer count_query.deinit();
-    const total_users = try count_query.count(db, .{});
+    const total_users = try count_query.count(db, .{}).unwrap();
     std.debug.print("count(): {d} (Expected 3)\n", .{total_users});
 
     var exists_query = models.Users.query();
     defer exists_query.deinit();
     _ = exists_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "rou" } });
-    const has_rou = try exists_query.exists(db, .{});
+    const has_rou = try exists_query.exists(db, .{}).unwrap();
     std.debug.print("exists(rou): {any} (Expected true)\n", .{has_rou});
 
     var active_count_query = models.Users.query();
     defer active_count_query.deinit();
     _ = active_count_query.where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } });
-    const is_active_count = try active_count_query.count(db, .{});
+    const is_active_count = try active_count_query.count(db, .{}).unwrap();
     std.debug.print("count(active): {d} (Expected 2)\n", .{is_active_count});
 
     // Test sum on a dummy field or raw
     // Since we don't have a numeric field in Users besides timestamp, let's check Comments counts per post
     var comment_count_query = models.Comments.query();
     defer comment_count_query.deinit();
-    const comment_count_sum = try comment_count_query.count(db, .{});
+    const comment_count_sum = try comment_count_query.count(db, .{}).unwrap();
     std.debug.print("Total comments: {d} (Expected 3)\n", .{comment_count_sum});
 
     // 10. Test Advanced Selection: first, pluck
@@ -329,7 +354,7 @@ pub fn main() !void {
     var first_query = models.Users.query();
     defer first_query.deinit();
     _ = first_query.orderBy(.{ .field = .name, .direction = .asc });
-    const first_user = try first_query.first(db, arena_allocator, .{});
+    const first_user = try first_query.first(db, arena_allocator, .{}).unwrap();
     if (first_user) |u| {
         std.debug.print("first() user: {s} (Expected alice)\n", .{u.name});
     }
@@ -338,7 +363,7 @@ pub fn main() !void {
     var pluck_query = models.Users.query();
     defer pluck_query.deinit();
     _ = pluck_query.orderBy(.{ .field = .name, .direction = .asc });
-    const names = try pluck_query.pluck(db, arena_allocator, .name, .{});
+    const names = try pluck_query.pluck(db, arena_allocator, .name, .{}).unwrap();
     std.debug.print("pluck(name): ", .{});
     for (names) |name| {
         std.debug.print("{s}, ", .{name});
@@ -352,7 +377,7 @@ pub fn main() !void {
     var distinct_query = models.Users.query();
     defer distinct_query.deinit();
     _ = distinct_query.distinct().select(&.{.email});
-    const distinct_emails = try distinct_query.fetchAs(struct { email: []const u8 }, db, arena_allocator, .{});
+    const distinct_emails = try distinct_query.fetchAs(struct { email: []const u8 }, db, arena_allocator, .{}).unwrap();
     std.debug.print("distinct emails: {d} (Expected 3)\n", .{distinct_emails.len});
 
     // 12. Test final action: delete
@@ -360,11 +385,11 @@ pub fn main() !void {
     var delete_query = models.Users.query();
     defer delete_query.deinit();
     _ = delete_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "bob" } });
-    try delete_query.delete(db, .{});
+    try delete_query.delete(db, .{}).unwrap();
 
     var count_after_delete = models.Users.query();
     defer count_after_delete.deinit();
-    const after_delete_count = try count_after_delete.count(db, .{});
+    const after_delete_count = try count_after_delete.count(db, .{}).unwrap();
     std.debug.print("Count after deleting bob: {d} (Expected 2)\n", .{after_delete_count});
 
     std.debug.print("\n🎉 All query tests completed!\n", .{});
@@ -394,7 +419,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Commit the transaction
@@ -404,7 +429,7 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_commit_user" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Users after commit: {d} (Expected 1)\n", .{tx_users.len});
     }
 
@@ -420,7 +445,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Rollback the transaction
@@ -430,7 +455,7 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_rollback_user" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
+        const tx_users = try verify_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Users after rollback: {d} (Expected 0)\n", .{tx_users.len});
     }
 
@@ -447,7 +472,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "MULTI_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
@@ -458,7 +483,7 @@ pub fn main() !void {
             .content = "This post is part of a transaction",
             .user_id = &tx_user_hex,
             .is_published = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_post_id);
 
         const tx_post_hex = try pg.uuidToHex(&tx_post_id[0..16].*);
@@ -469,7 +494,7 @@ pub fn main() !void {
             .user_id = &tx_user_hex,
             .content = "This comment is part of a transaction",
             .is_approved = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_comment_id);
 
         // Commit all operations
@@ -479,19 +504,19 @@ pub fn main() !void {
         var verify_user_query = models.Users.query();
         defer verify_user_query.deinit();
         _ = verify_user_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_multi_user" } });
-        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{});
+        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Users created: {d} (Expected 1)\n", .{tx_users.len});
 
         var verify_post_query = models.Posts.query();
         defer verify_post_query.deinit();
         _ = verify_post_query.where(.{ .field = .title, .operator = .eq, .value = .{ .string = "Transaction Post" } });
-        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{});
+        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Posts created: {d} (Expected 1)\n", .{tx_posts.len});
 
         var verify_comment_query = models.Comments.query();
         defer verify_comment_query.deinit();
         _ = verify_comment_query.where(.{ .field = .content, .operator = .eq, .value = .{ .string = "This comment is part of a transaction" } });
-        const tx_comments = try verify_comment_query.fetch(db, arena_allocator, .{});
+        const tx_comments = try verify_comment_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Comments created: {d} (Expected 1)\n", .{tx_comments.len});
     }
 
@@ -508,7 +533,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         const tx_user_hex = try pg.uuidToHex(&tx_user_id[0..16].*);
@@ -519,7 +544,7 @@ pub fn main() !void {
             .content = "This post will be rolled back",
             .user_id = &tx_user_hex,
             .is_published = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_post_id);
 
         // Rollback all operations
@@ -529,13 +554,13 @@ pub fn main() !void {
         var verify_user_query = models.Users.query();
         defer verify_user_query.deinit();
         _ = verify_user_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_rollback_multi_user" } });
-        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{});
+        const tx_users = try verify_user_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Users after rollback: {d} (Expected 0)\n", .{tx_users.len});
 
         var verify_post_query = models.Posts.query();
         defer verify_post_query.deinit();
         _ = verify_post_query.where(.{ .field = .title, .operator = .eq, .value = .{ .string = "Rollback Transaction Post" } });
-        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{});
+        const tx_posts = try verify_post_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Posts after rollback: {d} (Expected 0)\n", .{tx_posts.len});
     }
 
@@ -552,7 +577,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "QUERY_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user1_id);
 
         const tx_user2_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
@@ -561,14 +586,14 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = "QUERY_USER",
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user2_id);
 
         // Query within transaction
         var tx_query = models.Users.query();
         defer tx_query.deinit();
         _ = tx_query.where(.{ .field = .bid, .operator = .eq, .value = .{ .string = "QUERY_USER" } });
-        const tx_users = try tx_query.fetch(tx.executor(), arena_allocator, .{});
+        const tx_users = try tx_query.fetch(tx.executor(), arena_allocator, .{}).unwrap();
         std.debug.print("Users in transaction query: {d} (Expected 2)\n", .{tx_users.len});
 
         // Commit
@@ -578,7 +603,7 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .bid, .operator = .eq, .value = .{ .string = "QUERY_USER" } });
-        const verify_users = try verify_query.fetch(db, arena_allocator, .{});
+        const verify_users = try verify_query.fetch(db, arena_allocator, .{}).unwrap();
         std.debug.print("Users after commit: {d} (Expected 2)\n", .{verify_users.len});
     }
 
@@ -595,7 +620,7 @@ pub fn main() !void {
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
-        });
+        }).unwrap();
         defer allocator.free(tx_user_id);
 
         // Try to create a duplicate email (should fail)
@@ -607,12 +632,28 @@ pub fn main() !void {
             .is_active = true,
         });
 
-        if (duplicate_result) |dup_id| {
-            allocator.free(dup_id);
-            std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
-        } else |err| {
-            std.debug.print("Expected error on duplicate: {any}\n", .{err});
-        }
+        const duplicate_id = switch (duplicate_result) {
+            .ok => |id| id,
+            .err => |err| {
+                std.debug.print("Expected error on duplicate: {any}\n", .{err});
+                err.log();
+
+                // Rollback after error
+                try tx.rollback();
+
+                // Verify nothing was committed
+                var verify_query = models.Users.query();
+                defer verify_query.deinit();
+                _ = verify_query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "tx_error@example.com" } });
+                const tx_users = try verify_query.count(db, .{}).unwrap();
+                std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users});
+                return;
+            },
+        };
+
+        // If we get here, the duplicate insert succeeded when it shouldn't have
+        allocator.free(duplicate_id);
+        std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
 
         // Rollback after error
         try tx.rollback();
@@ -621,8 +662,8 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "tx_error@example.com" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
-        std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users.len});
+        const tx_users = try verify_query.count(tx.executor(), .{}).unwrap();
+        std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users});
     }
 
     // 19. Test Auto-Rollback on deinit
@@ -638,7 +679,7 @@ pub fn main() !void {
                 .password_hash = "hashed_password",
                 .bid = null,
                 .is_active = true,
-            });
+            }).unwrap();
             defer allocator.free(tx_user_id);
 
             // No commit - should auto-rollback when tx goes out of scope
@@ -648,8 +689,8 @@ pub fn main() !void {
         var verify_query = models.Users.query();
         defer verify_query.deinit();
         _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_auto_rollback_user" } });
-        const tx_users = try verify_query.fetch(db, arena_allocator, .{});
-        std.debug.print("Users after auto-rollback: {d} (Expected 0)\n", .{tx_users.len});
+        const tx_users = try verify_query.count(db, .{}).unwrap();
+        std.debug.print("Users after auto-rollback: {d} (Expected 0)\n", .{tx_users});
     }
 
     std.debug.print("\n🎉 All transaction tests completed!\n", .{});

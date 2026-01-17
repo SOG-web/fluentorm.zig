@@ -22,6 +22,8 @@ const FieldEnum = Model.FieldEnum;
 const RelationEnum = Model.RelationEnum;
 const Transaction = @import("../transaction.zig").Transaction;
 const Relationship = @import("../base.zig").Relationship;
+const err = @import("../error.zig");
+const OrmError = err.OrmError;
 
 // Related models
 const Comments = @import("../comments/model.zig");
@@ -845,33 +847,57 @@ fn hasCustomProjection(self: *Self) bool {
 ///
 /// Example:
 /// ```zig
-/// const users = try User.query()
+/// const result = User.query()
 ///     .where(.{ .field = .status, .operator = .eq, .value = "'active'" })
 ///     .fetch(&pool, allocator, .{});
-/// defer allocator.free(users);
+/// switch (result) {
+///     .ok => |users| { defer allocator.free(users); },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]Model {
+pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]Model) {
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionNotSupported;
+        return .{ .err = OrmError.fromError(error.CustomProjectionNotSupported) };
     }
 
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
 
-    var items = std.ArrayList(Model){};
-    defer items.deinit(allocator);
+            var items = std.ArrayList(Model){};
 
-    while (try result.next()) |row| {
-        const item = try row.to(Model, .{ .allocator = allocator, .map = .name });
-        try items.append(allocator, item);
+            while (true) {
+                const row = result.next() catch |e| {
+                    items.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                if (row) |r| {
+                    const item = r.to(Model, .{ .allocator = allocator, .map = .name }) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                    items.append(allocator, item) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                } else break;
+            }
+
+            return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
+                items.deinit(allocator);
+                return .{ .err = OrmError.fromError(e) };
+            } };
+        },
     }
-
-    return items.toOwnedSlice(allocator);
 }
 
 
@@ -881,14 +907,17 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
 /// Example:
 /// ```zig
 /// const UserSummary = struct { id: i64, total_posts: i64 };
-/// const summaries = try User.query()
+/// const result = User.query()
 ///     .select(&.{.id})
 ///     .selectAggregate(.count, .id, "total_posts")
 ///     .groupBy(&.{.id})
 ///     .fetchAs(UserSummary, &pool, allocator, .{});
-/// defer allocator.free(summaries);
+/// switch (result) {
+///     .ok => |summaries| { defer allocator.free(summaries); },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn fetchAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+pub fn fetchAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]R) {
     return query.fetchAs(self, R, db, allocator, args);
 }
 
@@ -922,12 +951,12 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 /// Example:
 /// ```zig
 /// const UsersWithPosts = Users.Rel.UsersWithPosts;
-/// const results = try User.query()
+/// const result = User.query()
 ///     .include(.{ .posts = .{} })
 ///     .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
 /// // results[0].posts is now parsed from JSONB!
 /// ```
-pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]R) {
      comptime {
         if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
@@ -939,27 +968,38 @@ pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.
 /// Execute query and return first item or null.
 /// Returns an error if the query contains custom projections (JOINs, GROUP BY, aggregates, etc.).
 /// Use `firstAs` for custom result types or `firstRaw` for direct access.
-pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) !?Model {
+pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?Model) {
     if (self.hasCustomProjection()) {
-        return error.CustomProjectionNotSupported;
+        return .{ .err = OrmError.fromError(error.CustomProjectionNotSupported) };
     }
 
     self.fill_base_select = true; // ensure base selects are included
 
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
-
-    if (try result.next()) |row| {
-        const item = try row.to(Model, .{ .allocator = allocator, .map = .name });
-        return item;
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
+            const row = result.next() catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
+            if (row) |r| {
+                const item = r.to(Model, .{ .allocator = allocator, .map = .name }) catch |e| {
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                return .{ .ok = item };
+            }
+            return .{ .ok = null };
+        },
     }
-    return null;
 }
 
 /// Execute query and return first item mapped to a custom result type, or null.
@@ -967,13 +1007,17 @@ pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
 /// Example:
 /// ```zig
 /// const UserStats = struct { id: i64, post_count: i64 };
-/// const stats = try User.query()
+/// const result = User.query()
 ///     .select(&.{.id})
 ///     .selectAggregate(.count, .id, "post_count")
 ///     .where(.{ .field = .id, .operator = .eq, .value = "$1" })
 ///     .firstAs(UserStats, &pool, allocator, .{user_id});
+/// switch (result) {
+///     .ok => |stats| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?R) {
     return query.firstAs(self, R, db, allocator, args);
 }
 
@@ -985,13 +1029,13 @@ pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.A
 /// Example:
 /// ```zig
 /// const UsersWithPosts = Users.Rel.UsersWithPosts;
-/// const user = try User.query()
+/// const result = User.query()
 ///     .include(.{ .posts = .{} })
 ///     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = id }})
 ///     .firstWithRel(UsersWithPosts, &pool, allocator, .{});
 /// // user.?.posts is now parsed from JSONB!
 /// ```
-pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?R) {
      comptime {
         if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
@@ -1020,12 +1064,12 @@ pub fn firstRaw(self: *Self, db: Executor, args: anytype) !?pg.Result {
 }
 
 /// Delete a record
-pub fn delete(self: *Self, db: Executor, args: anytype) !void {
+pub fn delete(self: *Self, db: Executor, args: anytype) err.Result(void) {
     return query.delete(self, db, args, Model);
 }
 
 /// Count records matching the query
-pub fn count(self: *Self, db: Executor, args: anytype) !i64 {
+pub fn count(self: *Self, db: Executor, args: anytype) err.Result(i64) {
     return query.count(self, db, args, Model);
 }
 
@@ -1033,11 +1077,15 @@ pub fn count(self: *Self, db: Executor, args: anytype) !i64 {
 ///
 /// Example:
 /// ```zig
-/// const has_users = try User.query()
+/// const result = User.query()
 ///     .where(.{ .field = .status, .operator = .eq, .value = "'active'" })
 ///     .exists(&pool);
+/// switch (result) {
+///     .ok => |has_users| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn exists(self: *Self, db: Executor, args: anytype) !bool {
+pub fn exists(self: *Self, db: Executor, args: anytype) err.Result(bool) {
     return query.exists(self, db, args, Model);
 }
 
@@ -1046,9 +1094,13 @@ pub fn exists(self: *Self, db: Executor, args: anytype) !bool {
 ///
 /// Example:
 /// ```zig
-/// const emails = try User.query().pluck(&pool, allocator, .email, .{});
+/// const result = User.query().pluck(&pool, allocator, .email, .{});
+/// switch (result) {
+///     .ok => |emails| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn pluck(self: *Self, db: Executor, allocator: std.mem.Allocator, field: FieldEnum, args: anytype) ![][]const u8 {
+pub fn pluck(self: *Self, db: Executor, allocator: std.mem.Allocator, field: FieldEnum, args: anytype) err.Result([][]const u8) {
     return query.pluck(self, db, allocator, field, args, Model);
 }
 
@@ -1056,9 +1108,13 @@ pub fn pluck(self: *Self, db: Executor, allocator: std.mem.Allocator, field: Fie
 ///
 /// Example:
 /// ```zig
-/// const total = try Order.query().sum(&pool, .amount, .{});
+/// const result = Order.query().sum(&pool, .amount, .{});
+/// switch (result) {
+///     .ok => |total| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn sum(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn sum(self: *Self, db: Executor, field: FieldEnum, args: anytype) err.Result(f64) {
     return self.aggregate(db, .sum, field, args);
 }
 
@@ -1066,9 +1122,13 @@ pub fn sum(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 ///
 /// Example:
 /// ```zig
-/// const avg_rating = try Review.query().avg(&pool, .rating, .{});
+/// const result = Review.query().avg(&pool, .rating, .{});
+/// switch (result) {
+///     .ok => |avg_rating| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn avg(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn avg(self: *Self, db: Executor, field: FieldEnum, args: anytype) err.Result(f64) {
     return self.aggregate(db, .avg, field, args);
 }
 
@@ -1076,9 +1136,13 @@ pub fn avg(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 ///
 /// Example:
 /// ```zig
-/// const min_price = try Product.query().min(&pool, .price, .{});
+/// const result = Product.query().min(&pool, .price, .{});
+/// switch (result) {
+///     .ok => |min_price| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn min(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn min(self: *Self, db: Executor, field: FieldEnum, args: anytype) err.Result(f64) {
     return self.aggregate(db, .min, field, args);
 }
 
@@ -1086,12 +1150,16 @@ pub fn min(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
 ///
 /// Example:
 /// ```zig
-/// const max_price = try Product.query().max(&pool, .price, .{});
+/// const result = Product.query().max(&pool, .price, .{});
+/// switch (result) {
+///     .ok => |max_price| { ... },
+///     .err => |e| e.log(),
+/// }
 /// ```
-pub fn max(self: *Self, db: Executor, field: FieldEnum, args: anytype) !f64 {
+pub fn max(self: *Self, db: Executor, field: FieldEnum, args: anytype) err.Result(f64) {
     return self.aggregate(db, .max, field, args);
 }
 
-fn aggregate(self: *Self, db: Executor, agg: AggregateType, field: FieldEnum, args: anytype) !f64 {
+fn aggregate(self: *Self, db: Executor, agg: AggregateType, field: FieldEnum, args: anytype) err.Result(f64) {
     return query.aggregate(self, db, agg, field, args, Model);
 }

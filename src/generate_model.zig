@@ -192,16 +192,19 @@ fn copyBaseModel(allocator: std.mem.Allocator, output_dir: []const u8) !void {
     const query_builder_dest_path = try std.fmt.allocPrint(allocator, "{s}/query.zig", .{output_dir});
     const transaction_dest_path = try std.fmt.allocPrint(allocator, "{s}/transaction.zig", .{output_dir});
     const executor_dest_path = try std.fmt.allocPrint(allocator, "{s}/executor.zig", .{output_dir});
+    const error_dest_path = try std.fmt.allocPrint(allocator, "{s}/error.zig", .{output_dir});
     defer allocator.free(base_dest_path);
     defer allocator.free(query_builder_dest_path);
     defer allocator.free(transaction_dest_path);
     defer allocator.free(executor_dest_path);
+    defer allocator.free(error_dest_path);
 
     // Embed source files directly into the executable
     const base_content = @embedFile("base.zig");
     const query_content = @embedFile("query.zig");
     const transaction_content = @embedFile("transaction.zig");
     const executor_content = @embedFile("executor.zig");
+    const error_content = @embedFile("error.zig");
 
     // Ensure output directory exists
     std.fs.cwd().makePath(output_dir) catch |err| {
@@ -229,8 +232,14 @@ fn copyBaseModel(allocator: std.mem.Allocator, output_dir: []const u8) !void {
         .data = executor_content,
     });
 
+    try std.fs.cwd().writeFile(.{
+        .sub_path = error_dest_path,
+        .data = error_content,
+    });
+
     std.debug.print("📦 Bundled base.zig to {s}\n", .{base_dest_path});
     std.debug.print("📦 Bundled query.zig to {s}\n", .{query_builder_dest_path});
     std.debug.print("📦 Bundled transaction.zig to {s}\n", .{transaction_dest_path});
     std.debug.print("📦 Bundled executor.zig to {s}\n", .{executor_dest_path});
+    std.debug.print("📦 Bundled error.zig to {s}\n", .{error_dest_path});
 }
