@@ -58,7 +58,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -76,7 +76,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -94,7 +94,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -115,7 +115,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -133,7 +133,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -152,7 +152,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -169,7 +169,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -186,7 +186,7 @@ pub fn main() !void {
         .ok => |id| id,
         .err => |err| {
             std.debug.print("Error: {any}", .{err});
-            return err;
+            return err.err.?;
         },
     };
 
@@ -684,14 +684,23 @@ pub fn main() !void {
             .err => |err| {
                 std.debug.print("Expected error on duplicate: {any}\n", .{err});
                 err.log();
+
+                // Rollback after error
+                try tx.rollback();
+
+                // Verify nothing was committed
+                var verify_query = models.Users.query();
+                defer verify_query.deinit();
+                _ = verify_query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "tx_error@example.com" } });
+                const tx_users = try verify_query.count(db, .{});
+                std.debug.print("Users after error rollback: {d} (Expected 0)\n", .{tx_users});
                 return;
             },
         };
 
-        if (duplicate_id) |dup_id| {
-            allocator.free(dup_id);
-            std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
-        }
+        // If we get here, the duplicate insert succeeded when it shouldn't have
+        allocator.free(duplicate_id);
+        std.debug.print("ERROR: Duplicate insert should have failed!\n", .{});
 
         // Rollback after error
         try tx.rollback();
@@ -717,7 +726,7 @@ pub fn main() !void {
                 .password_hash = "hashed_password",
                 .bid = null,
                 .is_active = true,
-            });
+            }).unwrap();
             defer allocator.free(tx_user_id);
 
             // No commit - should auto-rollback when tx goes out of scope
