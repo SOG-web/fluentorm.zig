@@ -25,11 +25,11 @@ All model methods accept an `Executor` as their first argument. The executor abs
 const Executor = @import("executor.zig").Executor;
 
 // Direct pool access
-const user = try Users.findById(Executor.fromPool(pool), allocator, id);
+const user = try Users.findById(Executor.fromPool(pool), allocator, id).unwrap();
 
 // Within a transaction
 var tx = try Transaction.begin(pool);
-const user = try Users.findById(tx.executor(), allocator, id);
+const user = try Users.findById(tx.executor(), allocator, id).unwrap();
 ```
 
 ## CRUD Operations
@@ -43,11 +43,11 @@ const user = try Users.findById(tx.executor(), allocator, id);
 const user_id = try Users.insert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
-});
+}).unwrap();
 defer allocator.free(user_id);  // MUST free!
 
 // ❌ Memory leak: ID not freed
-_ = try Users.insert(Executor.fromPool(pool), allocator, .{...});  // LEAKS MEMORY
+_ = try Users.insert(Executor.fromPool(pool), allocator, .{...}).unwrap();  // LEAKS MEMORY
 ```
 
 #### Multiple Inserts
@@ -55,13 +55,13 @@ _ = try Users.insert(Executor.fromPool(pool), allocator, .{...});  // LEAKS MEMO
 When inserting multiple records, **each returned ID must be freed**:
 
 ```zig
-const user1_id = try Users.insert(db, allocator, .{...});
+const user1_id = try Users.insert(db, allocator, .{...}).unwrap();
 defer allocator.free(user1_id);  // Free first ID
 
-const user2_id = try Users.insert(db, allocator, .{...});
+const user2_id = try Users.insert(db, allocator, .{...}).unwrap();
 defer allocator.free(user2_id);  // Free second ID
 
-const user3_id = try Users.insert(db, allocator, .{...});
+const user3_id = try Users.insert(db, allocator, .{...}).unwrap();
 defer allocator.free(user3_id);  // Free third ID
 ```
 
@@ -73,7 +73,7 @@ defer allocator.free(user3_id);  // Free third ID
 const ids = try Users.insertMany(db, allocator, &.{
     .{ .name = "Alice", .email = "alice@example.com" },
     .{ .name = "Bob", .email = "bob@example.com" },
-});
+}).unwrap();
 defer allocator.free(ids);  // Frees the slice AND all individual IDs
 ```
 
@@ -86,7 +86,7 @@ const user_id = try Users.insert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
-});
+}).unwrap();
 defer allocator.free(user_id);  // MUST free!
 ```
 
@@ -99,7 +99,7 @@ const user = try Users.insertAndReturn(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
-});
+}).unwrap();
 defer allocator.free(user);
 ```
 
@@ -108,9 +108,15 @@ defer allocator.free(user);
 #### Find by ID
 
 ```zig
-if (try Users.findById(Executor.fromPool(pool), allocator, user_id)) |user| {
-    defer allocator.free(user);
-    std.debug.print("Found user: {s}\n", .{user.name});
+const find_result = Users.findById(Executor.fromPool(pool), allocator, user_id);
+switch (find_result) {
+    .ok => |maybe_user| {
+        if (maybe_user) |user| {
+            defer allocator.free(user);
+            std.debug.print("Found user: {s}\n", .{user.name});
+        }
+    },
+    .err => |e| e.log(),
 }
 ```
 
@@ -124,21 +130,22 @@ defer query.deinit();
 
 const users = try query
     .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
-    .fetch(Executor.fromPool(pool), allocator, .{"alice@example.com"});
+    .fetch(Executor.fromPool(pool), allocator, .{"alice@example.com"})
+    .unwrap();
 defer allocator.free(users);
 ```
 
 #### Fetch all records
 
 ```zig
-const all_users = try Users.findAll(Executor.fromPool(pool), allocator, false);
+const all_users = try Users.findAll(Executor.fromPool(pool), allocator, false).unwrap();
 defer allocator.free(all_users);
 ```
 
 To include soft-deleted records, pass `true`:
 
 ```zig
-const all_including_deleted = try Users.findAll(Executor.fromPool(pool), allocator, true);
+const all_including_deleted = try Users.findAll(Executor.fromPool(pool), allocator, true).unwrap();
 defer allocator.free(all_including_deleted);
 ```
 
@@ -150,7 +157,7 @@ Update specific fields for a record:
 try Users.update(Executor.fromPool(pool), user_id, .{
     .name = "Alice Smith",
     .email = "alice.smith@example.com",
-});
+}).unwrap();
 ```
 
 **Note**: Fields marked with `.update_input = false` (like `created_at`, auto-generated IDs) are excluded from the update input struct.
@@ -160,7 +167,7 @@ try Users.update(Executor.fromPool(pool), user_id, .{
 ```zig
 const updated_user = try Users.updateAndReturn(Executor.fromPool(pool), allocator, user_id, .{
     .name = "Alice Smith",
-});
+}).unwrap();
 defer allocator.free(updated_user);
 ```
 
@@ -173,7 +180,7 @@ const user_id = try Users.upsert(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
-});
+}).unwrap();
 defer allocator.free(user_id);
 ```
 
@@ -186,7 +193,7 @@ const user = try Users.upsertAndReturn(Executor.fromPool(pool), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hashed_password",
-});
+}).unwrap();
 defer allocator.free(user);
 ```
 
@@ -197,7 +204,7 @@ defer allocator.free(user);
 If your schema includes a `deleted_at` field, you can use soft deletes:
 
 ```zig
-try Users.softDelete(Executor.fromPool(pool), user_id);
+try Users.softDelete(Executor.fromPool(pool), user_id).unwrap();
 ```
 
 Soft-deleted records are automatically excluded from queries by default. Use `.withDeleted()` on queries to include them.
@@ -207,7 +214,7 @@ Soft-deleted records are automatically excluded from queries by default. Use `.w
 Permanently removes the record:
 
 ```zig
-try Users.hardDelete(Executor.fromPool(pool), user_id);
+try Users.hardDelete(Executor.fromPool(pool), user_id).unwrap();
 ```
 
 **Warning**: This is irreversible and bypasses any soft-delete logic.
@@ -221,7 +228,7 @@ Base models provide limited Data Definition Language (DDL) operations.
 Remove all data but keep the table structure:
 
 ```zig
-try Users.truncate(Executor.fromPool(pool));
+try Users.truncate(Executor.fromPool(pool)).unwrap();
 ```
 
 **Warning**: This permanently deletes all data in the table.
@@ -229,7 +236,7 @@ try Users.truncate(Executor.fromPool(pool));
 ### Check Table Existence
 
 ```zig
-const exists = try Users.tableExists(Executor.fromPool(pool));
+const exists = try Users.tableExists(Executor.fromPool(pool)).unwrap();
 if (exists) {
     std.debug.print("Table exists\n", .{});
 }
@@ -242,11 +249,11 @@ if (exists) {
 ### Count Records
 
 ```zig
-const total_users = try Users.count(Executor.fromPool(pool), false);
+const total_users = try Users.count(Executor.fromPool(pool), false).unwrap();
 std.debug.print("Total users: {d}\n", .{total_users});
 
 // Include soft-deleted
-const total_including_deleted = try Users.count(Executor.fromPool(pool), true);
+const total_including_deleted = try Users.count(Executor.fromPool(pool), true).unwrap();
 ```
 
 ### Convert Row to Model
@@ -273,7 +280,7 @@ Generated models include JSON-safe response types that convert UUIDs from byte a
 Includes all fields:
 
 ```zig
-if (try Users.findById(&pool, allocator, user_id)) |user| {
+if (try Users.findById(&pool, allocator, user_id).unwrap()) |user| {
     defer allocator.free(user);
 
     const json_response = try user.toJsonResponse();
@@ -286,7 +293,7 @@ if (try Users.findById(&pool, allocator, user_id)) |user| {
 Excludes fields marked with `.redacted = true` (like `password_hash`):
 
 ```zig
-if (try Users.findById(&pool, allocator, user_id)) |user| {
+if (try Users.findById(&pool, allocator, user_id).unwrap()) |user| {
     defer allocator.free(user);
 
     const safe_response = try user.toJsonResponseSafe();
@@ -312,13 +319,19 @@ If you've defined relationships in your schema, the generator creates typed meth
 
 ```zig
 // Post belongs to User
-if (try post.fetchPostAuthor(&pool, allocator)) |author| {
-    defer allocator.free(author);
-    std.debug.print("Author: {s}\n", .{author.name});
+const result = post.fetchPostAuthor(&pool, allocator);
+switch (result) {
+    .ok => |maybe_author| {
+        if (maybe_author) |author| {
+            defer allocator.free(author);
+            std.debug.print("Author: {s}\n", .{author.name});
+        }
+    },
+    .err => |e| e.log(),
 }
 
-// Profile has one User
-if (try profile.fetchProfileUser(&pool, allocator)) |user| {
+// Profile has one User (using unwrap)
+if (try profile.fetchProfileUser(&pool, allocator).unwrap()) |user| {
     defer allocator.free(user);
     std.debug.print("User: {s}\n", .{user.name});
 }
@@ -328,7 +341,7 @@ if (try profile.fetchProfileUser(&pool, allocator)) |user| {
 
 ```zig
 // User has many Posts (defined with t.hasMany())
-const user_posts = try user.fetchPosts(&pool, allocator);
+const user_posts = try user.fetchPosts(&pool, allocator).unwrap();
 defer allocator.free(user_posts);
 
 for (user_posts) |p| {
@@ -336,7 +349,7 @@ for (user_posts) |p| {
 }
 
 // User has many Comments
-const user_comments = try user.fetchComments(&pool, allocator);
+const user_comments = try user.fetchComments(&pool, allocator).unwrap();
 defer allocator.free(user_comments);
 ```
 
@@ -344,13 +357,13 @@ defer allocator.free(user_comments);
 
 ```zig
 // Comment has parent comment (self-reference)
-if (try comment.fetchParent(&pool, allocator)) |parent| {
+if (try comment.fetchParent(&pool, allocator).unwrap()) |parent| {
     defer allocator.free(parent);
     std.debug.print("Reply to: {s}\n", .{parent.content});
 }
 
 // Comment has many replies (self-referential hasMany)
-const replies = try comment.fetchReplies(&pool, allocator);
+const replies = try comment.fetchReplies(&pool, allocator).unwrap();
 defer allocator.free(replies);
 ```
 

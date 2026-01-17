@@ -9,6 +9,9 @@ const BaseModel = @import("../base.zig").BaseModel;
 const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
 const Tables = @import("../registry.zig").Tables;
+const Executor = @import("../executor.zig").Executor;
+const err = @import("../error.zig");
+const OrmError = err.OrmError;
 
 // Related models
 const Categories = @import("../categories/model.zig");
@@ -204,12 +207,12 @@ const PostCategories = @This();
     }
     // Relationship methods
     /// Fetch the related Posts record for this PostCategories
-    pub fn fetchPost(self: *const PostCategories, db: *pg.Pool, allocator: std.mem.Allocator) !?Posts {
+    pub fn fetchPost(self: *const PostCategories, db: Executor, allocator: std.mem.Allocator) err.Result(?Posts) {
         return Posts.findById(db, allocator, self.post_id);
     }
 
     /// Fetch the related Categories record for this PostCategories
-    pub fn fetchCategory(self: *const PostCategories, db: *pg.Pool, allocator: std.mem.Allocator) !?Categories {
+    pub fn fetchCategory(self: *const PostCategories, db: Executor, allocator: std.mem.Allocator) err.Result(?Categories) {
         return Categories.findById(db, allocator, self.category_id);
     }
 

@@ -250,13 +250,14 @@ pub fn main() !void {
         .email = "alice@example.com",
         .name = "Alice",
         .password_hash = "hashed_password_here",
-    });
+    }).unwrap();
     defer allocator.free(user_id);
     std.debug.print("Created user with ID: {s}\n", .{user_id});
 
     // Find the user by ID
-    if (try models.Users.findById(&pool, allocator, user_id)) |user| {
+    if (try models.Users.findById(&pool, allocator, user_id).unwrap()) |user| {
         std.debug.print("Found user: {s} ({s})\n", .{ user.name, user.email });
+        defer allocator.free(user);
     }
 
     // Query users
@@ -265,7 +266,8 @@ pub fn main() !void {
 
     const users = try query
         .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
-        .fetch(&pool, allocator, .{"alice@example.com"});
+        .fetch(&pool, allocator, .{"alice@example.com"})
+        .unwrap();
     defer allocator.free(users);
 
     std.debug.print("Found {d} user(s)\n", .{users.len});
@@ -273,11 +275,11 @@ pub fn main() !void {
     // Update the user
     try models.Users.update(&pool, user_id, .{
         .name = "Alice Smith",
-    });
+    }).unwrap();
     std.debug.print("User updated!\n", .{});
 
     // Delete the user (soft delete)
-    try models.Users.softDelete(&pool, user_id);
+    try models.Users.softDelete(&pool, user_id).unwrap();
     std.debug.print("User soft deleted!\n", .{});
 }
 ```
@@ -365,11 +367,11 @@ Use the relationship:
 
 ```zig
 // Using hasMany on Users
-const user = (try models.Users.findById(&pool, allocator, user_id)).?;
+const user = (try models.Users.findById(&pool, allocator, user_id).unwrap()).?;
 defer allocator.free(user);
 
 // Fetch all posts by this user
-const posts = try user.fetchPosts(&pool, allocator);
+const posts = try user.fetchPosts(&pool, allocator).unwrap();
 defer allocator.free(posts);
 
 for (posts) |p| {
@@ -377,11 +379,11 @@ for (posts) |p| {
 }
 
 // Using belongsTo on Posts
-const post = (try models.Posts.findById(&pool, allocator, post_id)).?;
+const post = (try models.Posts.findById(&pool, allocator, post_id).unwrap()).?;
 defer allocator.free(post);
 
 // Fetch the author
-if (try post.fetchPostAuthor(&pool, allocator)) |author| {
+if (try post.fetchPostAuthor(&pool, allocator).unwrap()) |author| {
     defer allocator.free(author);
     std.debug.print("Post by: {s}\n", .{author.name});
 }

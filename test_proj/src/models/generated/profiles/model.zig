@@ -9,6 +9,9 @@ const BaseModel = @import("../base.zig").BaseModel;
 const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
 const Tables = @import("../registry.zig").Tables;
+const Executor = @import("../executor.zig").Executor;
+const err = @import("../error.zig");
+const OrmError = err.OrmError;
 
 // Related models
 const Users = @import("../users/model.zig");
@@ -297,7 +300,7 @@ const Profiles = @This();
     }
     // Relationship methods
     /// Fetch the related Users record for this Profiles
-    pub fn fetchUser(self: *const Profiles, db: *pg.Pool, allocator: std.mem.Allocator) !?Users {
+    pub fn fetchUser(self: *const Profiles, db: Executor, allocator: std.mem.Allocator) err.Result(?Users) {
         return Users.findById(db, allocator, self.user_id);
     }
 

@@ -12,7 +12,7 @@ A schema-first, type-safe ORM for Zig with PostgreSQL support. Define your datab
 - ✅ **Relationship Support**: Define and query relationships (one-to-many, many-to-one, one-to-one)
 - ✅ **Eager Loading with IntelliSense**: Load relations via `include()` with full IDE autocomplete using explicit relation types
 - ✅ **Detailed Error Handling**: `Result` types with full PostgreSQL error details (constraint names, tables, etc.)
-- ⚠️ **Transaction Support**: Transaction API implemented but currently non-functional due to ConnectionBusy error in pg.zig (see [Known Issues](#known-issues))
+- ✅ **Transaction Support**: Safe atomic multi-operation transactions with auto-rollback
 - ✅ **Soft Deletes**: Optional soft-delete functionality with `deleted_at` timestamps
 - ✅ **JSON Response Helpers**: Auto-generate JSON-safe response types with UUID conversion
 
@@ -226,12 +226,12 @@ pub fn main() !void {
     // Create an executor for pool access
     const db = Executor.fromPool(&pool);
 
-    // Create a user
+    // Create a user (using unwrap() for simple error propagation)
     const user_id = try Users.insert(db, allocator, .{
         .email = "alice@example.com",
         .name = "Alice",
         .password_hash = "hashed_password",
-    });
+    }).unwrap();
     defer allocator.free(user_id);
 
     // Query users
@@ -240,16 +240,23 @@ pub fn main() !void {
 
     const users = try query
         .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
-        .fetch(db, allocator, .{"alice@example.com"});
+        .fetch(db, allocator, .{"alice@example.com"})
+        .unwrap();
     defer allocator.free(users);
 
     // Get user with hasMany relationship
-    if (try Users.findById(db, allocator, user_id)) |user| {
-        defer allocator.free(user);
+    const find_result = Users.findById(db, allocator, user_id);
+    switch (find_result) {
+        .ok => |maybe_user| {
+            if (maybe_user) |user| {
+                defer allocator.free(user);
 
-        // Fetch related posts using hasMany
-        const posts = try user.fetchPosts(&pool, allocator);
-        defer allocator.free(posts);
+                // Fetch related posts using hasMany
+                const posts = try user.fetchPosts(&pool, allocator);
+                defer allocator.free(posts);
+            }
+        },
+        .err => |e| e.log(),
     }
 }
 ```
@@ -334,20 +341,6 @@ t.hasMany(.{
 
 - **Zig**: 0.15.1 or later
 - **pg.zig**: Automatically included as a transitive dependency
-
-## Known Issues
-
-### ⚠️ Transaction Support - ConnectionBusy Error
-
-The Transaction API is currently non-functional due to a `ConnectionBusy` error when calling `Transaction.begin(pool)`. This appears to be an issue with the underlying pg.zig library's connection state management.
-
-**Status:** BROKEN - Transactions cannot be used until this is resolved
-
-**Workaround:** None available. Users must structure application logic to avoid needing atomic multi-operation transactions.
-
-**Details:** See [TRANSACTION.md Known Issues](docs/TRANSACTION.md#known-issues) for full technical analysis and attempted solutions.
-
-**GitHub Issue:** `.github_issue_transaction_bug.md` - Copy this file's content to create a GitHub issue
 
 ## Contributing
 

@@ -26,6 +26,9 @@ pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std
         \\const Query = @import("query.zig");
         \\const Relationship = @import("../base.zig").Relationship;
         \\const Tables = @import("../registry.zig").Tables;
+        \\const Executor = @import("../executor.zig").Executor;
+        \\const err = @import("../error.zig");
+        \\const OrmError = err.OrmError;
         \\
     );
 
@@ -748,7 +751,7 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
                 // Fetch single related entity (forward relationship)
                 try writer.print(
                     \\    /// Fetch the related {s} record for this {s}
-                    \\    pub fn fetch{s}(self: *const {s}, db: *pg.Pool, allocator: std.mem.Allocator) !?{s} {{
+                    \\    pub fn fetch{s}(self: *const {s}, db: Executor, allocator: std.mem.Allocator) err.Result(?{s}) {{
                     \\        return {s}.findById(db, allocator, self.{s});
                     \\    }}
                     \\
@@ -771,15 +774,20 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
                     // Reverse side: query the related table by its foreign key
                     try writer.print(
                         \\    /// Fetch the related {s} record for this {s}
-                        \\    pub fn fetch{s}(self: *const {s}, db: *pg.Pool, allocator: std.mem.Allocator) !?{s} {{
+                        \\    pub fn fetch{s}(self: *const {s}, db: Executor, allocator: std.mem.Allocator) err.Result(?{s}) {{
                         \\        const queryt = "SELECT * FROM {s} WHERE {s} = $1 LIMIT 1";
-                        \\        var result = try db.query(queryt, .{{self.id}});
-                        \\        defer result.deinit();
-                        \\
-                        \\        if (try result.next()) |row| {{
-                        \\            return try row.to({s}, .{{ .allocator = allocator, .map = .ordinal }});
+                        \\        const row_res = db.rowWithErr(queryt, .{{self.id}});
+                        \\        switch (row_res) {{
+                        \\            .err => |e| return .{{ .err = e }},
+                        \\            .ok => |maybe_row| {{
+                        \\                var row = maybe_row orelse return .{{ .ok = null }};
+                        \\                defer row.deinit() catch {{}};
+                        \\                const item = row.to({s}, .{{ .allocator = allocator, .map = .ordinal }}) catch |e| {{
+                        \\                    return .{{ .err = OrmError.fromError(e) }};
+                        \\                }};
+                        \\                return .{{ .ok = item }};
+                        \\            }},
                         \\        }}
-                        \\        return null;
                         \\    }}
                         \\
                         \\
@@ -797,7 +805,7 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
                     // Forward side: use findById
                     try writer.print(
                         \\    /// Fetch the related {s} record for this {s}
-                        \\    pub fn fetch{s}(self: *const {s}, db: *pg.Pool, allocator: std.mem.Allocator) !?{s} {{
+                        \\    pub fn fetch{s}(self: *const {s}, db: Executor, allocator: std.mem.Allocator) err.Result(?{s}) {{
                         \\        return {s}.findById(db, allocator, self.{s});
                         \\    }}
                         \\
@@ -817,20 +825,35 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
                 // Fetch multiple related entities (reverse lookup)
                 try writer.print(
                     \\    /// Fetch all {s} records related to this {s}
-                    \\    pub fn fetch{s}(self: *const {s}, db: *pg.Pool, allocator: std.mem.Allocator) ![]{s} {{
+                    \\    pub fn fetch{s}(self: *const {s}, db: Executor, allocator: std.mem.Allocator) err.Result([]{s}) {{
                     \\        const queryt = "SELECT * FROM {s} WHERE {s} = $1";
-                    \\        var result = try db.query(queryt, .{{self.id}});
-                    \\        defer result.deinit();
-                    \\
-                    \\        var list = std.ArrayList({s}){{}};
-                    \\        errdefer list.deinit(allocator);
-                    \\
-                    \\        while (try result.next()) |row| {{
-                    \\            const item = try row.to({s}, .{{ .allocator = allocator, .map = .ordinal }});
-                    \\            try list.append(allocator, item);
+                    \\        const res = db.queryWithErr(queryt, .{{self.id}});
+                    \\        switch (res) {{
+                    \\            .err => |e| return .{{ .err = e }},
+                    \\            .ok => |*result| {{
+                    \\                defer result.deinit();
+                    \\                var list = std.ArrayList({s}){{}};
+                    \\                while (result.next() catch |e| {{
+                    \\                    // Cleanup on iteration error
+                    \\                    list.deinit(allocator);
+                    \\                    return .{{ .err = OrmError.fromError(e) }};
+                    \\                }}) |row| {{
+                    \\                    const item = row.to({s}, .{{ .allocator = allocator, .map = .ordinal }}) catch |e| {{
+                    \\                        list.deinit(allocator);
+                    \\                        return .{{ .err = OrmError.fromError(e) }};
+                    \\                    }};
+                    \\                    list.append(allocator, item) catch |e| {{
+                    \\                        // Cleanup on append error
+                    \\                        list.deinit(allocator);
+                    \\                        return .{{ .err = OrmError.fromError(e) }};
+                    \\                    }};
+                    \\                }}
+                    \\                const slice = list.toOwnedSlice(allocator) catch |e| {{
+                    \\                    return .{{ .err = OrmError.fromError(e) }};
+                    \\                }};
+                    \\                return .{{ .ok = slice }};
+                    \\            }},
                     \\        }}
-                    \\
-                    \\        return try list.toOwnedSlice(allocator);
                     \\    }}
                     \\
                     \\
@@ -877,20 +900,33 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
         // Generate fetchMany method
         try writer.print(
             \\    /// Fetch all related {s} records for this {s} (one-to-many)
-            \\    pub fn fetch{s}(self: *const {s}, db: *pg.Pool, allocator: std.mem.Allocator) ![]{s} {{
+            \\    pub fn fetch{s}(self: *const {s}, db: Executor, allocator: std.mem.Allocator) err.Result([]{s}) {{
             \\        const queryt = "SELECT * FROM {s} WHERE {s} = $1";
-            \\        var result = try db.query(queryt, .{{self.{s}}});
-            \\        defer result.deinit();
-            \\
-            \\        var list = std.ArrayList({s}){{}};
-            \\        errdefer list.deinit(allocator);
-            \\
-            \\        while (try result.next()) |row| {{
-            \\            const item = try row.to({s}, .{{ .allocator = allocator, .map = .ordinal }});
-            \\            try list.append(allocator, item);
+            \\        const res = db.queryWithErr(queryt, .{{self.{s}}});
+            \\        switch (res) {{
+            \\            .err => |e| return .{{ .err = e }},
+            \\            .ok => |*result| {{
+            \\                defer result.deinit();
+            \\                var list = std.ArrayList({s}){{}};
+            \\                while (result.next() catch |e| {{
+            \\                    list.deinit(allocator);
+            \\                    return .{{ .err = OrmError.fromError(e) }};
+            \\                }}) |row| {{
+            \\                    const item = row.to({s}, .{{ .allocator = allocator, .map = .ordinal }}) catch |e| {{
+            \\                        list.deinit(allocator);
+            \\                        return .{{ .err = OrmError.fromError(e) }};
+            \\                    }};
+            \\                    list.append(allocator, item) catch |e| {{
+            \\                        list.deinit(allocator);
+            \\                        return .{{ .err = OrmError.fromError(e) }};
+            \\                    }};
+            \\                }}
+            \\                const slice = list.toOwnedSlice(allocator) catch |e| {{
+            \\                    return .{{ .err = OrmError.fromError(e) }};
+            \\                }};
+            \\                return .{{ .ok = slice }};
+            \\            }},
             \\        }}
-            \\
-            \\        return try list.toOwnedSlice(allocator);
             \\    }}
             \\
             \\

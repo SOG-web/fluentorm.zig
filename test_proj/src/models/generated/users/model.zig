@@ -9,6 +9,9 @@ const BaseModel = @import("../base.zig").BaseModel;
 const Query = @import("query.zig");
 const Relationship = @import("../base.zig").Relationship;
 const Tables = @import("../registry.zig").Tables;
+const Executor = @import("../executor.zig").Executor;
+const err = @import("../error.zig");
+const OrmError = err.OrmError;
 
 // Related models
 const Comments = @import("../comments/model.zig");
@@ -326,36 +329,62 @@ const Users = @This();
     }
     // Relationship methods
     /// Fetch all related Posts records for this Users (one-to-many)
-    pub fn fetchPosts(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Posts {
+    pub fn fetchPosts(self: *const Users, db: Executor, allocator: std.mem.Allocator) err.Result([]Posts) {
         const queryt = "SELECT * FROM posts WHERE user_id = $1";
-        var result = try db.query(queryt, .{self.id});
-        defer result.deinit();
-
-        var list = std.ArrayList(Posts){};
-        errdefer list.deinit(allocator);
-
-        while (try result.next()) |row| {
-            const item = try row.to(Posts, .{ .allocator = allocator, .map = .ordinal });
-            try list.append(allocator, item);
+        const res = db.queryWithErr(queryt, .{self.id});
+        switch (res) {
+            .err => |e| return .{ .err = e },
+            .ok => |*result| {
+                defer result.deinit();
+                var list = std.ArrayList(Posts){};
+                while (result.next() catch |e| {
+                    list.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                }) |row| {
+                    const item = row.to(Posts, .{ .allocator = allocator, .map = .ordinal }) catch |e| {
+                        list.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                    list.append(allocator, item) catch |e| {
+                        list.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                }
+                const slice = list.toOwnedSlice(allocator) catch |e| {
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                return .{ .ok = slice };
+            },
         }
-
-        return try list.toOwnedSlice(allocator);
     }
 
     /// Fetch all related Comments records for this Users (one-to-many)
-    pub fn fetchComments(self: *const Users, db: *pg.Pool, allocator: std.mem.Allocator) ![]Comments {
+    pub fn fetchComments(self: *const Users, db: Executor, allocator: std.mem.Allocator) err.Result([]Comments) {
         const queryt = "SELECT * FROM comments WHERE user_id = $1";
-        var result = try db.query(queryt, .{self.id});
-        defer result.deinit();
-
-        var list = std.ArrayList(Comments){};
-        errdefer list.deinit(allocator);
-
-        while (try result.next()) |row| {
-            const item = try row.to(Comments, .{ .allocator = allocator, .map = .ordinal });
-            try list.append(allocator, item);
+        const res = db.queryWithErr(queryt, .{self.id});
+        switch (res) {
+            .err => |e| return .{ .err = e },
+            .ok => |*result| {
+                defer result.deinit();
+                var list = std.ArrayList(Comments){};
+                while (result.next() catch |e| {
+                    list.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                }) |row| {
+                    const item = row.to(Comments, .{ .allocator = allocator, .map = .ordinal }) catch |e| {
+                        list.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                    list.append(allocator, item) catch |e| {
+                        list.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                }
+                const slice = list.toOwnedSlice(allocator) catch |e| {
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                return .{ .ok = slice };
+            },
         }
-
-        return try list.toOwnedSlice(allocator);
     }
 
