@@ -16,7 +16,8 @@ const users = try Users.query()
         .direction = .desc,
     })
     .limit(10)
-    .fetch(&pool, allocator, .{18});
+    .fetch(&pool, allocator, .{18})
+    .unwrap();
 defer allocator.free(users);
 ```
 
@@ -28,10 +29,10 @@ defer allocator.free(users);
 // ✅ Correct: proper cleanup
 var query = Users.query();
 defer query.deinit();
-const users = try query.fetch(&pool, allocator, .{});
+const users = try query.fetch(&pool, allocator, .{}).unwrap();
 
 // ❌ Memory leak: query not cleaned up
-const users = try Users.query().fetch(&pool, allocator, .{});
+const users = try Users.query().fetch(&pool, allocator, .{}).unwrap();
 ```
 
 ### Query Initialization Options
@@ -83,14 +84,16 @@ defer query.deinit();
 // First query
 const active_users = try query
     .where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } })
-    .fetch(&pool, allocator, .{});
+    .fetch(&pool, allocator, .{})
+    .unwrap();
 
 // Reset and reuse for second query (avoids re-allocating internal buffers)
 query.reset();
 
 const admins = try query
     .where(.{ .field = .role, .operator = .eq, .value = .{ .string = "'admin'" } })
-    .fetch(&pool, allocator, .{});
+    .fetch(&pool, allocator, .{})
+    .unwrap();
 ```
 
 ```zig
@@ -98,14 +101,14 @@ const admins = try query
 for (user_ids) |id| {
     var query = Users.query();  // allocates new buffers each iteration
     defer query.deinit();
-    const user = try query.where(...).first(&pool, allocator, .{id});
+    const user = try query.where(...).first(&pool, allocator, .{id}).unwrap();
 }
 
 // ✅ Better: reuse with reset
 var query = Users.query();
 defer query.deinit();
 for (user_ids) |id| {
-    const user = try query.where(...).first(&pool, allocator, .{id});
+    const user = try query.where(...).first(&pool, allocator, .{id}).unwrap();
     query.reset();  // reuse internal buffers
 }
 ```
@@ -131,7 +134,7 @@ Enable DISTINCT on the query.
 var query = Users.query();
 defer query.deinit();
 _ = query.distinct().select(&.{ .email });
-const unique_emails = try query.fetch(&pool, allocator, .{});
+const unique_emails = try query.fetch(&pool, allocator, .{}).unwrap();
 ```
 
 > [!IMPORTANT] > `distinct()` requires a mutable reference, so it cannot be chained on temporary values. Store the query in a variable first.
@@ -187,7 +190,7 @@ Adds a WHERE NULL clause.
 var query = Users.query();
 defer query.deinit();
 _ = query.whereNull(.deleted_at);
-const active_users = try query.fetch(&pool, allocator, .{});
+const active_users = try query.fetch(&pool, allocator, .{}).unwrap();
 ```
 
 ### `whereNotNull(field: Field)`
@@ -198,7 +201,7 @@ Adds a WHERE NOT NULL clause.
 var query = Users.query();
 defer query.deinit();
 _ = query.whereNotNull(.email_verified_at);
-const verified_users = try query.fetch(&pool, allocator, .{});
+const verified_users = try query.fetch(&pool, allocator, .{}).unwrap();
 ```
 
 ### `whereIn(field: Field, values: []const []const u8)`
@@ -350,7 +353,7 @@ const users = try query.fetchWithRel(
     &pool,
     allocator,
     .{}
-);
+).unwrap();
 
 // OR use fetchAs for custom projections
 const UserWithJson = struct {
@@ -358,7 +361,7 @@ const UserWithJson = struct {
     posts: ?[]const u8,    // Raw JSONB string
     comments: ?[]const u8,
 };
-const results = try query.fetchAs(UserWithJson, &pool, allocator, .{});
+const results = try query.fetchAs(UserWithJson, &pool, allocator, .{}).unwrap();
 ```
 
 > [!NOTE]
@@ -720,20 +723,20 @@ switch (result) {
 }
 ```
 
-### `min(db: *pg.Pool, field: Field, args: anytype) !f64`
+### `min(db: Executor, field: Field, args: anytype) Result(f64)`
 
 Get the minimum value of a column.
 
 ```zig
-const min_price = try Products.query().min(&pool, .price, .{});
+const min_price = try Products.query().min(&pool, .price, .{}).unwrap();
 ```
 
-### `max(db: *pg.Pool, field: Field, args: anytype) !f64`
+### `max(db: Executor, field: Field, args: anytype) Result(f64)`
 
 Get the maximum value of a column.
 
 ```zig
-const max_price = try Products.query().max(&pool, .price, .{});
+const max_price = try Products.query().max(&pool, .price, .{}).unwrap();
 ```
 
 ## SQL Generation

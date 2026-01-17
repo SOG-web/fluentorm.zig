@@ -17,20 +17,21 @@ const user_id = try Users.insert(tx.executor(), allocator, .{
     .email = "alice@example.com",
     .name = "Alice",
     .password_hash = "hash",
-});
+}).unwrap();
 
 // Query within the same transaction
 var query = Users.query();
 const user = try query
     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
-    .first(tx.executor(), allocator, .{user_id});
+    .first(tx.executor(), allocator, .{user_id})
+    .unwrap();
 
 // Operations on different models
 _ = try Posts.insert(tx.executor(), allocator, .{
     .user_id = user_id,
     .title = "First Post",
     .content = "Hello!",
-});
+}).unwrap();
 
 // Raw SQL
 try tx.exec("UPDATE stats SET user_count = user_count + 1", .{});
@@ -56,8 +57,8 @@ var tx = try Transaction.begin(pool);
 Returns an `Executor` that can be passed to any model method. This is how you use models within the transaction.
 
 ```zig
-const user_id = try Users.insert(tx.executor(), allocator, data);
-const posts = try Posts.query().fetch(tx.executor(), allocator, .{});
+const user_id = try Users.insert(tx.executor(), allocator, data).unwrap();
+const posts = try Posts.query().fetch(tx.executor(), allocator, .{}).unwrap();
 ```
 
 #### `commit() !void`
@@ -134,10 +135,10 @@ All model methods accept `Executor` as their first argument:
 
 ```zig
 // Non-transactional
-const user = try Users.findById(Executor.fromPool(pool), allocator, id);
+const user = try Users.findById(Executor.fromPool(pool), allocator, id).unwrap();
 
 // Transactional
-const user = try Users.findById(tx.executor(), allocator, id);
+const user = try Users.findById(tx.executor(), allocator, id).unwrap();
 ```
 
 ## Common Patterns
@@ -149,13 +150,13 @@ fn createUserWithProfile(pool: *pg.Pool, allocator: Allocator) !void {
     var tx = try Transaction.begin(pool);
     defer tx.deinit(); // Rollback on error
 
-    const user_id = try Users.insert(tx.executor(), allocator, .{...});
+    const user_id = try Users.insert(tx.executor(), allocator, .{...}).unwrap();
 
     // If this fails, deinit() will rollback the user insert
     try Profiles.insert(tx.executor(), allocator, .{
         .user_id = user_id,
         ...
-    });
+    }).unwrap();
 
     try tx.commit();
 }
@@ -168,14 +169,14 @@ var tx = try Transaction.begin(pool);
 defer tx.deinit();
 
 // Work with multiple models
-const order_id = try Orders.insert(tx.executor(), allocator, order_data);
+const order_id = try Orders.insert(tx.executor(), allocator, order_data).unwrap();
 
 for (items) |item| {
     try OrderItems.insert(tx.executor(), allocator, .{
         .order_id = order_id,
         .product_id = item.product_id,
         .quantity = item.quantity,
-    });
+    }).unwrap();
 }
 
 // Update inventory
@@ -196,14 +197,15 @@ var tx = try Transaction.begin(pool);
 defer tx.deinit();
 
 // Insert and verify
-const user_id = try Users.insert(tx.executor(), allocator, .{...});
+const user_id = try Users.insert(tx.executor(), allocator, .{...}).unwrap();
 
 var query = Users.query();
 defer query.deinit();
 
 const user = try query
     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
-    .first(tx.executor(), allocator, .{user_id});
+    .first(tx.executor(), allocator, .{user_id})
+    .unwrap();
 
 if (user == null) {
     return error.InsertVerificationFailed;
@@ -228,7 +230,7 @@ const user_id = try tx.insert(allocator, data);
 ```zig
 var tx = try Transaction.begin(pool);
 defer tx.deinit();
-const user_id = try Users.insert(tx.executor(), allocator, data);
+const user_id = try Users.insert(tx.executor(), allocator, data).unwrap();
 try tx.commit();
 ```
 
@@ -239,67 +241,12 @@ Key changes:
 3. Use `tx.executor()` with any model's methods
 4. Explicit `tx.commit()` required
 
-## Known Issues
+## Test Coverage
 
-### ⚠️ ConnectionBusy Error (pg.zig library issue)
-
-**Status:** BROKEN - Transactions are currently non-functional
-
-When attempting to use transactions, you may encounter a `ConnectionBusy` error:
-
-```text
-error: ConnectionBusy
-???:?:?: 0x10f38495c in ??? (???)
-```
-
-**Root Cause:**
-
-The error occurs when calling `Transaction.begin(pool)`, specifically when the transaction attempts to call `conn.begin()` on a connection acquired from the pool. This appears to be an issue with the underlying `pg.zig` library where connections may be in an unexpected state or the library doesn't properly support the transaction methods.
-
-**Technical Details:**
-
-The `Transaction` struct attempts to:
-
-1. Acquire a connection from the pool: `const conn = try pool.acquire();`
-2. Begin a transaction: `try conn.begin();`
-
-The `ConnectionBusy` error occurs at step 2, suggesting that:
-
-- The connection state is not properly initialized
-- The `conn.begin()` method may have compatibility issues with the current pg.zig version
-- There may be pool connection state management issues
-
-**Attempted Fixes:**
-
-We tried using raw SQL commands instead of the connection methods:
-
-- `conn.exec("BEGIN", .{})` instead of `conn.begin()`
-- `conn.exec("COMMIT", .{})` instead of `conn.commit()`
-- `conn.exec("ROLLBACK", .{})` instead of `conn.rollback()`
-
-However, these also failed with the same `ConnectionBusy` error, confirming the issue is at the connection acquisition/state level, not with the specific transaction methods.
-
-**Workaround:**
-
-Until this is resolved in the pg.zig library, transactions are **not supported**. For operations that require atomicity, you may need to:
-
-1. Use manual SQL transaction commands with error handling
-2. Structure your application logic to minimize the need for transactions
-3. Wait for a fix in the pg.zig library or FluentORM
-
-**Related:**
-
-- GitHub Issue: [Link to be added]
-- Tested with: pg.zig latest version (as of 2026-01-16)
-
-**Test Coverage:**
-
-Comprehensive transaction tests have been implemented in `test_proj/src/main.zig` covering:
+Comprehensive transaction tests are implemented covering:
 
 - Basic commit and rollback
 - Multi-model operations
 - Query operations within transactions
-- Error handling
+- Error handling with `Result` types
 - Auto-rollback on defer
-
-These tests are ready to verify the fix once the underlying connection issue is resolved.

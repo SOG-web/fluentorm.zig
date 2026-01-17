@@ -122,7 +122,7 @@ ON DELETE CASCADE
 
 ```zig
 // Fetch the user who authored this post
-const author = try post.fetchPostAuthor(&pool, allocator);
+const author = try post.fetchPostAuthor(&pool, allocator).unwrap();
 defer if (author) |a| allocator.free(a);
 ```
 
@@ -160,11 +160,11 @@ pub fn build(t: *TableSchema) void {
 
 ```zig
 // Fetch all posts by this user
-const posts = try user.fetchPosts(&pool, allocator);
+const posts = try user.fetchPosts(&pool, allocator).unwrap();
 defer allocator.free(posts);
 
 // Fetch all comments by this user
-const comments = try user.fetchComments(&pool, allocator);
+const comments = try user.fetchComments(&pool, allocator).unwrap();
 defer allocator.free(comments);
 ```
 
@@ -214,7 +214,7 @@ pub fn build(t: *TableSchema) void {
 
 ```zig
 // Returns a single user or null
-const user = try profile.fetchProfileUser(&pool, allocator);
+const user = try profile.fetchProfileUser(&pool, allocator).unwrap();
 defer if (user) |u| allocator.free(u);
 ```
 
@@ -279,11 +279,12 @@ defer query.deinit();
 
 const post_cats = try query
     .where(.{ .field = .post_id, .operator = .eq, .value = .{ .string = "$1" } })
-    .fetch(&pool, allocator, .{post_id});
+    .fetch(&pool, allocator, .{post_id})
+    .unwrap();
 defer allocator.free(post_cats);
 
 for (post_cats) |pc| {
-    if (try pc.fetchPostCategoryCategory(&pool, allocator)) |cat| {
+    if (try pc.fetchPostCategoryCategory(&pool, allocator).unwrap()) |cat| {
         defer allocator.free(cat);
         std.debug.print("Category: {s}\n", .{cat.name});
     }
@@ -361,7 +362,7 @@ const users = try query.fetchWithRel(
     &pool,
     allocator,
     .{}
-);
+).unwrap();
 ```
 
 ### Filtering Related Data
@@ -389,7 +390,7 @@ const users = try query.fetchWithRel(
     &pool,
     allocator,
     .{}
-);
+).unwrap();
 // Only approved comments are loaded
 ```
 
@@ -412,7 +413,7 @@ const users = try query.fetchWithRel(
     &pool,
     allocator,
     .{}
-);
+).unwrap();
 defer allocator.free(users);
 
 for (users) |user| {
@@ -450,7 +451,7 @@ _ = query
     .include(.{ .posts = .{ .model_name = .posts } })
     .include(.{ .comments = .{ .model_name = .comments } });
 
-const results = try query.fetchAs(UserWithJsonRelations, &pool, allocator, .{});
+const results = try query.fetchAs(UserWithJsonRelations, &pool, allocator, .{}).unwrap();
 defer allocator.free(results);
 
 for (results) |res| {
@@ -535,21 +536,21 @@ pub fn main() !void {
     defer pool.deinit();
 
     // Fetch a post
-    const post = (try models.Posts.findById(&pool, allocator, post_id)).?;
+    const post = (try models.Posts.findById(&pool, allocator, post_id).unwrap()).?;
     defer allocator.free(post);
 
     // Fetch the author using belongsTo relationship
-    if (try post.fetchUser(&pool, allocator)) |author| {
+    if (try post.fetchUser(&pool, allocator).unwrap()) |author| {
         defer allocator.free(author);
         std.debug.print("Post authored by: {s}\n", .{author.name});
     }
 
     // Fetch a user
-    const user = (try models.Users.findById(&pool, allocator, user_id)).?;
+    const user = (try models.Users.findById(&pool, allocator, user_id).unwrap()).?;
     defer allocator.free(user);
 
     // Fetch all posts by this user using hasMany relationship
-    const user_posts = try user.fetchPosts(&pool, allocator);
+    const user_posts = try user.fetchPosts(&pool, allocator).unwrap();
     defer allocator.free(user_posts);
 
     for (user_posts) |p| {
@@ -557,7 +558,7 @@ pub fn main() !void {
     }
 
     // Fetch all comments by this user
-    const user_comments = try user.fetchComments(&pool, allocator);
+    const user_comments = try user.fetchComments(&pool, allocator).unwrap();
     defer allocator.free(user_comments);
 }
 ```
@@ -613,7 +614,8 @@ defer query.deinit();
 const user_posts = try query
     .where(.{ .field = .user_id, .operator = .eq, .value = .{ .string = "$1" } })
     .orderBy(.{ .field = .created_at, .direction = .desc })
-    .fetch(&pool, allocator, .{user_id});
+    .fetch(&pool, allocator, .{user_id})
+    .unwrap();
 defer allocator.free(user_posts);
 ```
 
@@ -678,7 +680,8 @@ defer query.deinit();
 // Eager load posts
 const users = try query
     .include(.{ .posts = .{ .model_name = .posts } })
-    .fetchWithRel(UsersWithPosts, &pool, allocator, .{});
+    .fetchWithRel(UsersWithPosts, &pool, allocator, .{})
+    .unwrap();
 defer allocator.free(users);
 
 for (users) |user| {
@@ -705,7 +708,7 @@ Each relation type provides:
 
 ```zig
 // Convert base model to relation type
-const base_user = try Users.findById(&pool, allocator, id);
+const base_user = try Users.findById(&pool, allocator, id).unwrap();
 var user_with_posts = UsersWithPosts.fromBase(base_user.?);
 
 // Manually set posts if needed
