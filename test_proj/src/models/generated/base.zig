@@ -51,6 +51,7 @@ pub fn BaseModel(comptime T: type) type {
                 \\)
             ;
             var result = try db.query(sql, .{table_name});
+            result.drain() catch {};
             defer result.deinit();
             // Parse result to get boolean (implementation depends on pg library)
             return false; // TODO: parse result
@@ -143,19 +144,13 @@ pub fn BaseModel(comptime T: type) type {
 
             // std.debug.print("Executing insert SQL: {s}\n", .{sql});
 
-            var result = db.query(sql, params) catch |err| {
+            var row = db.row(sql, params) catch |err| {
                 std.debug.print("Insert failed: {s}\n", .{@errorName(err)});
                 return err;
-            };
-            defer result.deinit();
-
-            // Get the returned ID from INSERT...RETURNING
-            if (try result.next()) |row| {
-                const id = row.get([]const u8, 0); // ID is first column in RETURNING
-                return try allocator.dupe(u8, id);
-            }
-
-            return error.InsertFailed;
+            } orelse return error.InsertionFailed;
+            defer row.deinit() catch unreachable;
+            const id = row.get([]const u8, 0); // ID is first column in RETURNING
+            return try allocator.dupe(u8, id);
         }
 
         /// Insert multiple new records in a single query
@@ -385,16 +380,13 @@ pub fn BaseModel(comptime T: type) type {
             const sql = T.upsertSQL();
             const params = T.upsertParams(data);
 
-            var result = try db.query(sql, params);
-            defer result.deinit();
-
-            // Get the returned ID from UPSERT...RETURNING
-            if (try result.next()) |row| {
-                const id = row.get([]const u8, 0);
-                return try allocator.dupe(u8, id);
-            }
-
-            return error.UpsertFailed;
+            var row = db.row(sql, params) catch |err| {
+                std.debug.print("Insert failed: {s}\n", .{@errorName(err)});
+                return err;
+            } orelse return error.UpsertFailed;
+            defer row.deinit() catch unreachable;
+            const id = row.get([]const u8, 0); // ID is first column in RETURNING
+            return try allocator.dupe(u8, id);
         }
 
         /// Upsert (insert or update) a record and return the full model
@@ -488,15 +480,14 @@ pub fn BaseModel(comptime T: type) type {
             else
                 try std.fmt.allocPrint(temp_allocator, "SELECT COUNT(*) FROM {s} WHERE deleted_at IS NULL", .{table_name});
 
-            var result = try db.query(sql, .{});
-            defer result.deinit();
+            var result = db.row(sql, .{}) catch |err| {
+                std.debug.print("Count failed: {s}\n", .{@errorName(err)});
+                return err;
+            } orelse return error.CountFailed;
+            defer result.deinit() catch unreachable;
 
             // Parse count result
-            if (try result.next()) |row| {
-                return row.get(i64, 0);
-            }
-
-            return 0;
+            return result.get(i64, 0);
         }
 
         /// From row

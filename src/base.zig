@@ -148,7 +148,7 @@ pub fn BaseModel(comptime T: type) type {
                 std.debug.print("Insert failed: {s}\n", .{@errorName(err)});
                 return err;
             } orelse return error.InsertionFailed;
-            defer row.deinit();
+            defer row.deinit() catch unreachable;
             const id = row.get([]const u8, 0); // ID is first column in RETURNING
             return try allocator.dupe(u8, id);
         }
@@ -384,7 +384,7 @@ pub fn BaseModel(comptime T: type) type {
                 std.debug.print("Insert failed: {s}\n", .{@errorName(err)});
                 return err;
             } orelse return error.UpsertFailed;
-            defer row.deinit();
+            defer row.deinit() catch unreachable;
             const id = row.get([]const u8, 0); // ID is first column in RETURNING
             return try allocator.dupe(u8, id);
         }
@@ -484,7 +484,7 @@ pub fn BaseModel(comptime T: type) type {
                 std.debug.print("Count failed: {s}\n", .{@errorName(err)});
                 return err;
             } orelse return error.CountFailed;
-            defer result.deinit();
+            defer result.deinit() catch unreachable;
 
             // Parse count result
             return result.get(i64, 0);
