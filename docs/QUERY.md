@@ -473,34 +473,49 @@ Only get soft-deleted records.
 
 ## Execution Methods
 
-### `fetch(db: *pg.Pool, allocator: Allocator, args: anytype) ![]T`
+All execution methods return `Result` types for detailed error handling. See [ERROR_HANDLING.md](ERROR_HANDLING.md) for details.
+
+### `fetch(db: Executor, allocator: Allocator, args: anytype) Result([]Model)`
 
 Executes the query and returns a slice of models.
 
 ```zig
 var query = Users.query();
 defer query.deinit();
-const users = try query
+
+const result = query
     .where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } })
-    .fetch(&pool, allocator, .{});
+    .fetch(db, allocator, .{});
+
+switch (result) {
+    .ok => |users| {
+        defer allocator.free(users);
+        for (users) |user| {
+            std.debug.print("User: {s}\n", .{user.name});
+        }
+    },
+    .err => |e| e.log(),
+}
+
+// Or use unwrap() for simple propagation:
+const users = try query.fetch(db, allocator, .{}).unwrap();
 defer allocator.free(users);
 ```
 
-> [!IMPORTANT] > `fetch` will return `error.CustomProjectionRequiresFetchAs` if your query contains any of the following:
+> [!IMPORTANT] > `fetch` returns `.err` with `CustomProjectionNotSupported` if your query contains:
 >
 > - **JOINs** (`innerJoin`, `leftJoin`, `rightJoin`, `fullJoin`)
 > - **GROUP BY** clauses (`groupBy`, `groupByRaw`)
 > - **HAVING** clauses (`having`, `havingAggregate`)
 > - **Aggregate functions** (`selectAggregate`)
 > - **Raw selects with aliases** (e.g., `selectRaw("COUNT(*) AS total")`)
-> - **Table-prefixed columns** (e.g., `selectRaw("users.id")`)
 > - **Select columns** (e.g., `select(&.{.id, .name})`)
 >
 > For these cases, use `fetchAs` with a custom struct or `fetchRaw` for direct result access.
 
-### `fetchAs(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) ![]R`
+### `fetchAs(comptime R: type, db: Executor, allocator: Allocator, args: anytype) Result([]R)`
 
-Executes the query and returns a slice of a custom result type. Use this when your query produces a different shape than the model (e.g., with JOINs, aggregates, custom selects, or includes).
+Executes the query and returns a slice of a custom result type.
 
 ```zig
 const UserSummary = struct {
@@ -514,15 +529,19 @@ _ = query
     .select(&.{.name})
     .selectRaw("(SELECT count(*) FROM posts WHERE posts.user_id = users.id) AS post_count");
 
-const summaries = try query.fetchAs(UserSummary, &pool, allocator, .{});
-defer allocator.free(summaries);
+const result = query.fetchAs(UserSummary, db, allocator, .{});
+switch (result) {
+    .ok => |summaries| {
+        defer allocator.free(summaries);
+        // use summaries
+    },
+    .err => |e| e.log(),
+}
 ```
 
-### `fetchWithRel(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) ![]R`
+### `fetchWithRel(comptime R: type, db: Executor, allocator: Allocator, args: anytype) Result([]R)`
 
-Fetches results with included relationships, automatically parsing JSONB columns into typed structures.
-
-The type `R` must be a relation type from the model's `Rel` namespace. The ORM generates these automatically.
+Fetches results with included relationships, parsing JSONB columns into typed structures.
 
 ```zig
 var query = Users.query();
@@ -531,21 +550,15 @@ _ = query.include(.{
     .posts = .{ .model_name = .posts },
 });
 
-const users = try query.fetchWithRel(
-    Users.Rel.UsersWithPosts,
-    &pool,
-    allocator,
-    .{}
-);
-defer allocator.free(users);
-
-for (users) |user| {
-    std.debug.print("User: {s}\n", .{user.name});
-    if (user.posts) |posts| {
-        for (posts) |post| {
-            std.debug.print("  Post: {s}\n", .{post.title});
+const result = query.fetchWithRel(Users.Rel.UsersWithPosts, db, allocator, .{});
+switch (result) {
+    .ok => |users| {
+        defer allocator.free(users);
+        for (users) |user| {
+            std.debug.print("User: {s}\n", .{user.name});
         }
-    }
+    },
+    .err => |e| e.log(),
 }
 ```
 
@@ -578,7 +591,7 @@ while (try result.next()) |row| {
 }
 ```
 
-### `first(db: *pg.Pool, allocator: Allocator, args: anytype) !?T`
+### `first(db: Executor, allocator: Allocator, args: anytype) Result(?Model)`
 
 Executes the query with `LIMIT 1` and returns the first result or `null`.
 
@@ -586,52 +599,58 @@ Executes the query with `LIMIT 1` and returns the first result or `null`.
 var query = Users.query();
 defer query.deinit();
 _ = query
-    .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } })
-    .orderBy(.{ .field = .created_at, .direction = .desc });
+    .where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } });
 
-const user = try query.first(&pool, allocator, .{email});
-if (user) |u| {
-    std.debug.print("Found: {s}\n", .{u.name});
+const result = query.first(db, allocator, .{email});
+switch (result) {
+    .ok => |maybe_user| {
+        if (maybe_user) |user| {
+            std.debug.print("Found: {s}\n", .{user.name});
+        }
+    },
+    .err => |e| e.log(),
 }
 ```
 
-> [!IMPORTANT]
-> Like `fetch`, this method will return `error.CustomProjectionRequiresFetchAs` if the query contains JOINs, GROUP BY, aggregates, or other custom projections. Use `firstAs` or `firstRaw` instead.
+### `firstAs(comptime R: type, db: Executor, allocator: Allocator, args: anytype) Result(?R)`
 
-### `firstAs(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) !?R`
-
-Executes the query with `LIMIT 1` and returns the first result mapped to a custom type, or `null`.
+Executes the query with `LIMIT 1` and returns the first result mapped to a custom type.
 
 ```zig
 const UserStats = struct { id: i64, post_count: i64 };
 
-const stats = try Users.query()
+const result = Users.query()
     .select(&.{.id})
     .selectAggregate(.count, .id, "post_count")
-    .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
-    .groupBy(&.{.id})
-    .firstAs(UserStats, &pool, allocator, .{user_id});
+    .firstAs(UserStats, db, allocator, .{user_id});
+
+switch (result) {
+    .ok => |stats| { ... },
+    .err => |e| e.log(),
+}
 ```
 
-### `firstWithRel(comptime R: type, db: *pg.Pool, allocator: Allocator, args: anytype) !?R`
+### `firstWithRel(comptime R: type, db: Executor, allocator: Allocator, args: anytype) Result(?R)`
 
 Same as `fetchWithRel` but returns only the first result or `null`.
 
 ```zig
-const user = try Users.query()
+const result = Users.query()
     .include(.{ .posts = .{ .model_name = .posts } })
     .where(.{ .field = .id, .operator = .eq, .value = .{ .string = "$1" } })
-    .firstWithRel(Users.Rel.UsersWithPosts, &pool, allocator, .{user_id});
+    .firstWithRel(Users.Rel.UsersWithPosts, db, allocator, .{user_id});
 
-if (user) |u| {
-    std.debug.print("Found user {s} with {d} posts\n", .{
-        u.name,
-        if (u.posts) |p| p.len else 0
-    });
+switch (result) {
+    .ok => |maybe_user| {
+        if (maybe_user) |u| {
+            std.debug.print("Found user {s}\n", .{u.name});
+        }
+    },
+    .err => |e| e.log(),
 }
 ```
 
-### `firstRaw(db: *pg.Pool, args: anytype) !?pg.Result`
+### `firstRaw(db: Executor, args: anytype) !?pg.Result`
 
 Executes the query with `LIMIT 1` and returns the raw `pg.Result`, or `null` if no rows found.
 
@@ -640,9 +659,9 @@ Executes the query with `LIMIT 1` and returns the raw `pg.Result`, or `null` if 
 
 ## Aggregate Methods
 
-All aggregate methods require a stored query variable:
+All aggregate methods return `Result` types:
 
-### `count(db: *pg.Pool, args: anytype) !i64`
+### `count(db: Executor, args: anytype) Result(i64)`
 
 Executes a `COUNT(*)` query based on the current filters.
 
@@ -650,51 +669,55 @@ Executes a `COUNT(*)` query based on the current filters.
 var query = Users.query();
 defer query.deinit();
 _ = query.where(.{ .field = .is_active, .operator = .eq, .value = .{ .boolean = true } });
-const active_count = try query.count(&pool, .{});
-std.debug.print("Active users: {d}\n", .{active_count});
+
+const result = query.count(db, .{});
+switch (result) {
+    .ok => |count| std.debug.print("Active users: {d}\n", .{count}),
+    .err => |e| e.log(),
+}
 ```
 
-### `exists(db: *pg.Pool, args: anytype) !bool`
+### `exists(db: Executor, args: anytype) Result(bool)`
 
 Check if any records match the query.
 
 ```zig
-var query = Users.query();
-defer query.deinit();
-_ = query.where(.{ .field = .email, .operator = .eq, .value = .{ .string = "$1" } });
-const has_user = try query.exists(&pool, .{email});
+const result = query.exists(db, .{email});
+switch (result) {
+    .ok => |has_user| {
+        if (has_user) { ... }
+    },
+    .err => |e| e.log(),
+}
 ```
 
-### `pluck(db: *pg.Pool, allocator: Allocator, field: Field, args: anytype) ![][]const u8`
+### `pluck(db: Executor, allocator: Allocator, field: Field, args: anytype) Result([][]const u8)`
 
 Get a single column as a slice.
 
 ```zig
-var query = Users.query();
-defer query.deinit();
-_ = query.orderBy(.{ .field = .name, .direction = .asc });
-const names = try query.pluck(&pool, allocator, .name, .{});
-defer allocator.free(names);
-
-for (names) |name| {
-    std.debug.print("{s}\n", .{name});
+const result = query.pluck(db, allocator, .name, .{});
+switch (result) {
+    .ok => |names| {
+        defer allocator.free(names);
+        for (names) |name| {
+            std.debug.print("{s}\n", .{name});
+        }
+    },
+    .err => |e| e.log(),
 }
 ```
 
-### `sum(db: *pg.Pool, field: Field, args: anytype) !f64`
+### `sum`, `avg`, `min`, `max` - `Result(f64)`
 
-Get the sum of a column.
-
-```zig
-const total = try Orders.query().sum(&pool, .amount, .{});
-```
-
-### `avg(db: *pg.Pool, field: Field, args: anytype) !f64`
-
-Get the average of a column.
+Get aggregate values for a column.
 
 ```zig
-const avg_rating = try Reviews.query().avg(&pool, .rating, .{});
+const result = Orders.query().sum(db, .amount, .{});
+switch (result) {
+    .ok => |total| std.debug.print("Total: {d}\n", .{total}),
+    .err => |e| e.log(),
+}
 ```
 
 ### `min(db: *pg.Pool, field: Field, args: anytype) !f64`

@@ -367,17 +367,60 @@ FluentORM generates compile-time type-safe code:
 
 ## Error Handling
 
-All database operations return errors that should be handled:
+All database operations return `Result` types that provide detailed error information:
+
+### Using `switch` for Detailed Handling
 
 ```zig
-const user = User.findById(&pool, allocator, user_id) catch |err| {
-    std.debug.print("Database error: {}\n", .{err});
-    return err;
-};
+const result = Users.insert(db, allocator, .{
+    .email = "alice@example.com",
+    .name = "Alice",
+});
+
+switch (result) {
+    .ok => |user_id| {
+        defer allocator.free(user_id);
+        std.debug.print("Created user: {s}\n", .{user_id});
+    },
+    .err => |e| {
+        if (e.isUniqueViolation()) {
+            std.debug.print("Email already exists\n", .{});
+            if (e.constraintName()) |c| {
+                std.debug.print("Constraint: {s}\n", .{c});
+            }
+        } else {
+            e.log(); // Log full error details
+        }
+    },
+}
 ```
 
-Common errors include:
+### Using `unwrap()` for Simple Propagation
 
-- `error.QueryFailed` - SQL execution failed
-- `error.OutOfMemory` - Allocation failed
-- `error.ConnectionFailed` - Database connection issue
+```zig
+// Propagates the underlying Zig error if Result is .err
+const user_id = try Users.insert(db, allocator, .{
+    .email = "alice@example.com",
+    .name = "Alice",
+}).unwrap();
+defer allocator.free(user_id);
+```
+
+### OrmError Details
+
+When an error occurs, `OrmError` provides:
+- `code` - Categorized error type (UniqueViolation, ForeignKeyViolation, etc.)
+- `message` - Human-readable error message
+- `pg_error` - Full PostgreSQL error details (constraint, table, column, etc.)
+
+### Common Error Codes
+
+| Code | Description |
+|------|-------------|
+| `UniqueViolation` | Duplicate key (unique constraint failed) |
+| `ForeignKeyViolation` | Referenced record doesn't exist |
+| `NotNullViolation` | Required field was null |
+| `NoRowsReturned` | Query returned no rows |
+
+See [ERROR_HANDLING.md](ERROR_HANDLING.md) for complete documentation.
+
