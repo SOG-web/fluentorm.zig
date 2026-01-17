@@ -812,8 +812,11 @@ pub fn count(self: anytype, db: Executor, args: anytype, Model: type) !i64 {
     defer result.deinit();
 
     if (try result.next()) |row| {
-        return row.get(i64, 0);
+        const ct = row.get(i64, 0);
+        result.drain() catch {};
+        return ct;
     }
+    result.drain() catch {};
     return 0;
 }
 
@@ -920,7 +923,10 @@ pub fn aggregate(self: anytype, db: Executor, agg: AggregateType, field: anytype
     defer result.deinit();
 
     if (try result.next()) |row| {
-        return row.get(?f64, 0) orelse 0.0;
+        const val = row.get(?f64, 0) orelse 0.0;
+        result.drain() catch {};
+        return val;
     }
+    result.drain() catch {};
     return 0.0;
 }

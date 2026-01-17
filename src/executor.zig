@@ -23,6 +23,20 @@ pub const Executor = union(enum) {
         };
     }
 
+    pub fn row(self: Executor, sql: []const u8, args: anytype) !?pg.QueryRow {
+        return switch (self) {
+            .pool => |p| try p.row(sql, args),
+            .conn => |c| try c.row(sql, args),
+        };
+    }
+
+    pub fn rowOpts(self: Executor, sql: []const u8, args: anytype, opts: pg.Conn.QueryOpts) !?pg.QueryRow {
+        return switch (self) {
+            .pool => |p| try p.rowOpts(sql, args, opts),
+            .conn => |c| try c.rowOpts(sql, args, opts),
+        };
+    }
+
     /// Execute a statement without returning results
     pub fn exec(self: Executor, sql: []const u8, args: anytype) !void {
         switch (self) {
