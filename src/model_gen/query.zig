@@ -41,6 +41,8 @@ pub fn generateImports(writer: anytype, schema: TableSchema) !void {
         \\const RelationEnum = Model.RelationEnum;
         \\const Transaction = @import("../transaction.zig").Transaction;
         \\const Relationship = @import("../base.zig").Relationship;
+        \\const err = @import("../error.zig");
+        \\const OrmError = err.OrmError;
         \\
     );
 

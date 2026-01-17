@@ -5,6 +5,8 @@ const pg = @import("pg");
 const Executor = @import("executor.zig").Executor;
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
 const Tables = @import("registry.zig").Tables;
+const err = @import("error.zig");
+const OrmError = err.OrmError;
 
 pub const JoinClause = struct {
     base_field: TableFieldsUnion,
@@ -649,43 +651,81 @@ pub fn hasCustomProjection(self: anytype) bool {
     return false;
 }
 
-pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]R) {
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
-    // std.debug.print("Executing fetchAs SQL: {s}\n", .{sql});
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
 
-    var items = std.ArrayList(R){};
-    defer items.deinit(allocator);
+            var items = std.ArrayList(R){};
 
-    var mapper = result.mapper(R, .{ .allocator = allocator });
-    while (try mapper.next()) |item| {
-        try items.append(allocator, item);
+            var mapper = result.mapper(R, .{ .allocator = allocator });
+            while (true) {
+                const item = mapper.next() catch |e| {
+                    items.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                if (item) |i| {
+                    items.append(allocator, i) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                } else break;
+            }
+            return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
+                items.deinit(allocator);
+                return .{ .err = OrmError.fromError(e) };
+            } };
+        },
     }
-    return items.toOwnedSlice(allocator);
 }
 
-pub fn fetchWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) ![]R {
+pub fn fetchWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]R) {
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
 
-    var items = std.ArrayList(R){};
-    errdefer items.deinit(allocator);
+            var items = std.ArrayList(R){};
 
-    while (try result.next()) |row| {
-        const item = try R.fromRow(row, allocator);
-        try items.append(allocator, item);
+            while (true) {
+                const row = result.next() catch |e| {
+                    items.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                if (row) |r| {
+                    const item = R.fromRow(r, allocator) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                    items.append(allocator, item) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                } else break;
+            }
+            return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
+                items.deinit(allocator);
+                return .{ .err = OrmError.fromError(e) };
+            } };
+        },
     }
-    return try items.toOwnedSlice(allocator);
 }
 
 pub fn fetchRaw(self: anytype, db: Executor, args: anytype) !pg.Result {
@@ -697,37 +737,55 @@ pub fn fetchRaw(self: anytype, db: Executor, args: anytype) !pg.Result {
     });
 }
 
-pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?R) {
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
-
-    var mapper = result.mapper(R, .{ .allocator = allocator });
-    if (try mapper.next()) |item| {
-        return item;
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
+            var mapper = result.mapper(R, .{ .allocator = allocator });
+            const item = mapper.next() catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
+            return .{ .ok = item };
+        },
     }
-    return null;
 }
 
-pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) !?R {
+pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?R) {
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
-    const sql = try self.buildSql(temp_allocator);
+    const sql = self.buildSql(temp_allocator) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
-    var result = try db.queryOpts(sql, args, .{
+    const query_result = db.queryOptsWithErr(sql, args, .{
         .column_names = true,
     });
-    defer result.deinit();
-
-    if (try result.next()) |row| {
-        return try R.fromRow(row, allocator);
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
+            const row = result.next() catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
+            if (row) |r| {
+                const item = R.fromRow(r, allocator) catch |e| {
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                return .{ .ok = item };
+            }
+            return .{ .ok = null };
+        },
     }
-    return null;
 }
 
 pub fn firstRaw(self: anytype, db: Executor, args: anytype) !?pg.Result {
@@ -749,184 +807,246 @@ pub fn firstRaw(self: anytype, db: Executor, args: anytype) !?pg.Result {
     return null;
 }
 
-pub fn delete(self: anytype, db: Executor, args: anytype, Model: type) !void {
+pub fn delete(self: anytype, db: Executor, args: anytype, Model: type) err.Result(void) {
     const temp_allocator = self.arena.allocator();
     var comp_sql = std.ArrayList(u8){};
     defer comp_sql.deinit(temp_allocator);
 
     const table_name = Model.tableName();
-    try comp_sql.writer(temp_allocator).print("DELETE FROM {s}", .{table_name});
+    comp_sql.writer(temp_allocator).print("DELETE FROM {s}", .{table_name}) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     var first_where = true;
-    // Handle soft deletes
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try comp_sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+        comp_sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
         first_where = false;
     }
 
     for (self.where_clauses.items) |clause| {
         if (first_where) {
-            try comp_sql.appendSlice(temp_allocator, " WHERE ");
+            comp_sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
             first_where = false;
         } else {
-            try comp_sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+            comp_sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
         }
-        try comp_sql.appendSlice(temp_allocator, clause.sql);
+        comp_sql.appendSlice(temp_allocator, clause.sql) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
-    var result = try db.query(comp_sql.items, args);
-    defer result.deinit();
+    const result = db.execWithErr(comp_sql.items, args);
+    return switch (result) {
+        .ok => .{ .ok = {} },
+        .err => |e| .{ .err = e },
+    };
 }
 
-pub fn count(self: anytype, db: Executor, args: anytype, Model: type) !i64 {
+pub fn count(self: anytype, db: Executor, args: anytype, Model: type) err.Result(i64) {
     const temp_allocator = self.arena.allocator();
 
     var sql = std.ArrayList(u8){};
     defer sql.deinit(temp_allocator);
 
     const table_name = Model.tableName();
-    try sql.appendSlice(temp_allocator, "SELECT COUNT(*) FROM ");
-    try sql.appendSlice(temp_allocator, table_name);
+    sql.appendSlice(temp_allocator, "SELECT COUNT(*) FROM ") catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
+    sql.appendSlice(temp_allocator, table_name) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     var first_where = true;
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
         first_where = false;
     }
 
     for (self.where_clauses.items) |clause| {
         if (first_where) {
-            try sql.appendSlice(temp_allocator, " WHERE ");
+            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
             first_where = false;
         } else {
-            try sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
         }
-        try sql.appendSlice(temp_allocator, clause.sql);
+        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
-    var result = try db.queryOpts(sql.items, args, .{
-        .column_names = true,
-    });
-    defer result.deinit();
-
-    if (try result.next()) |row| {
-        const ct = row.get(i64, 0);
-        result.drain() catch {};
-        return ct;
+    const row_result = db.rowWithErr(sql.items, args);
+    switch (row_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |maybe_row| {
+            var row = maybe_row orelse return .{ .ok = 0 };
+            defer row.deinit() catch {};
+            return .{ .ok = row.get(i64, 0) };
+        },
     }
-    result.drain() catch {};
-    return 0;
 }
 
-pub fn exists(self: anytype, db: Executor, args: anytype, Model: type) !bool {
-    _ = Model; // autofix
-    const c = try self.count(db, args);
-    return c > 0;
+pub fn exists(self: anytype, db: Executor, args: anytype, Model: type) err.Result(bool) {
+    _ = Model;
+    const count_result = self.count(db, args);
+    switch (count_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |c| return .{ .ok = c > 0 },
+    }
 }
 
-pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: anytype, args: anytype, Model: type) ![][]const u8 {
+pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: anytype, args: anytype, Model: type) err.Result([][]const u8) {
     const temp_allocator = self.arena.allocator();
 
     var sql = std.ArrayList(u8){};
     defer sql.deinit(temp_allocator);
 
     const table_name = Model.tableName();
-    try sql.writer(temp_allocator).print("SELECT {s} FROM {s}", .{ @tagName(field), table_name });
+    sql.writer(temp_allocator).print("SELECT {s} FROM {s}", .{ @tagName(field), table_name }) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     var first_where = true;
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
         first_where = false;
     }
 
     for (self.where_clauses.items) |clause| {
         if (first_where) {
-            try sql.appendSlice(temp_allocator, " WHERE ");
+            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
             first_where = false;
         } else {
-            try sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
         }
-        try sql.appendSlice(temp_allocator, clause.sql);
+        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
     if (self.limit_val) |l| {
         var buf: [32]u8 = undefined;
-        const _limit = try std.fmt.bufPrint(&buf, " LIMIT {d}", .{l});
-        try sql.appendSlice(temp_allocator, _limit);
+        const _limit = std.fmt.bufPrint(&buf, " LIMIT {d}", .{l}) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
+        sql.appendSlice(temp_allocator, _limit) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
     if (self.offset_val) |o| {
         var buf: [32]u8 = undefined;
-        const _offset = try std.fmt.bufPrint(&buf, " OFFSET {d}", .{o});
-        try sql.appendSlice(temp_allocator, _offset);
+        const _offset = std.fmt.bufPrint(&buf, " OFFSET {d}", .{o}) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
+        sql.appendSlice(temp_allocator, _offset) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
-    var result = try db.queryOpts(sql.items, args, .{
+    const query_result = db.queryOptsWithErr(sql.items, args, .{
         .column_names = true,
     });
-    defer result.deinit();
+    switch (query_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |result| {
+            defer result.deinit();
 
-    var items = std.ArrayList([]const u8){};
-    errdefer items.deinit(allocator);
+            var items = std.ArrayList([]const u8){};
 
-    while (try result.next()) |row| {
-        const val = row.get([]const u8, 0);
-        const dupe = try allocator.dupe(u8, val);
-        try items.append(allocator, dupe);
+            while (true) {
+                const row = result.next() catch |e| {
+                    items.deinit(allocator);
+                    return .{ .err = OrmError.fromError(e) };
+                };
+                if (row) |r| {
+                    const val = r.get([]const u8, 0);
+                    const dupe = allocator.dupe(u8, val) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                    items.append(allocator, dupe) catch |e| {
+                        items.deinit(allocator);
+                        return .{ .err = OrmError.fromError(e) };
+                    };
+                } else break;
+            }
+
+            return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
+                items.deinit(allocator);
+                return .{ .err = OrmError.fromError(e) };
+            } };
+        },
     }
-
-    return items.toOwnedSlice(allocator);
 }
 
-pub fn aggregate(self: anytype, db: Executor, agg: AggregateType, field: anytype, args: anytype, Model: type) !f64 {
-    // {
-    //     if (agg != .count and !isNumericField(Model, field)) {
-    //         @compileError("Aggregate requires numeric field");
-    //     }
-    // }
-
+pub fn aggregate(self: anytype, db: Executor, agg: AggregateType, field: anytype, args: anytype, Model: type) err.Result(f64) {
     const temp_allocator = self.arena.allocator();
 
     var sql = std.ArrayList(u8){};
     defer sql.deinit(temp_allocator);
 
     const table_name = Model.tableName();
-    try sql.writer(temp_allocator).print("SELECT {s}({s}) FROM {s}", .{
+    sql.writer(temp_allocator).print("SELECT {s}({s}) FROM {s}", .{
         agg.toSql(),
         @tagName(field),
         table_name,
-    });
+    }) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     var first_where = true;
     const has_deleted_at = @hasField(Model, "deleted_at");
     if (has_deleted_at and !self.include_deleted) {
-        try sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
         first_where = false;
     }
 
     for (self.where_clauses.items) |clause| {
         if (first_where) {
-            try sql.appendSlice(temp_allocator, " WHERE ");
+            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
             first_where = false;
         } else {
-            try sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
+                return .{ .err = OrmError.fromError(e) };
+            };
         }
-        try sql.appendSlice(temp_allocator, clause.sql);
+        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
+            return .{ .err = OrmError.fromError(e) };
+        };
     }
 
-    var result = try db.queryOpts(sql.items, args, .{
-        .column_names = true,
-    });
-    defer result.deinit();
-
-    if (try result.next()) |row| {
-        const val = row.get(?f64, 0) orelse 0.0;
-        result.drain() catch {};
-        return val;
+    const row_result = db.rowWithErr(sql.items, args);
+    switch (row_result) {
+        .err => |e| return .{ .err = e },
+        .ok => |maybe_row| {
+            var row = maybe_row orelse return .{ .ok = 0.0 };
+            defer row.deinit() catch {};
+            return .{ .ok = row.get(?f64, 0) orelse 0.0 };
+        },
     }
-    result.drain() catch {};
-    return 0.0;
 }

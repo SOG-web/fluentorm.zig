@@ -1,10 +1,8 @@
 pub const Alter = @import("schema.zig").Alter;
 pub const err = @import("error.zig");
 pub const OrmError = err.OrmError;
-pub const PgError = err.PgError;
 pub const ErrorCode = err.ErrorCode;
 pub const Result = err.Result;
-pub const extractPgError = err.extractPgError;
 pub const toOrmError = err.toOrmError;
 pub const logError = err.logError;
 
