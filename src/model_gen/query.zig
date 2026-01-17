@@ -252,6 +252,9 @@ pub fn generateBuildIncludeSql(writer: anytype, schema: TableSchema, allocator: 
         \\        const relation = Model.getRelation(rel_tag);
         \\
     );
+    if (!has_rels) {
+        writer.writeAll("_ = self;\n");
+    }
     try writer.print("        {s} clause = JoinClause{{\n", .{if (has_rels) "var" else "const"});
     try writer.writeAll(
         \\            .join_type = JoinType.left,
