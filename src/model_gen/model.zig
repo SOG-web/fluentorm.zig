@@ -62,22 +62,22 @@ pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std
 
         var iter = seen_tables.keyIterator();
         while (iter.next()) |table_name| {
-            // Use PascalCase non-singular for struct reference
-            const struct_name = try utils.toPascalCaseNonSingular(allocator, table_name.*);
-            defer allocator.free(struct_name);
+            // Normalize table name to snake_case for directory lookup
+            const normalized_table = try utils.toLowerSnakeCase(allocator, table_name.*);
+            defer allocator.free(normalized_table);
 
-            // Use snake_case for directory name
-            const dir_name = try utils.toLowerSnakeCase(allocator, table_name.*);
-            defer allocator.free(dir_name);
+            // Use PascalCase non-singular for struct reference
+            const struct_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
+            defer allocator.free(struct_name);
 
             // Import from sibling directory: @import("../users/model.zig")
             try writer.print("const {s} = @import(\"../{s}/model.zig\");\n", .{
                 struct_name,
-                dir_name,
+                normalized_table,
             });
             try writer.print("const {s}Query = @import(\"../{s}/query.zig\");\n", .{
                 struct_name,
-                dir_name,
+                normalized_table,
             });
         }
     }
@@ -160,7 +160,10 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
 
     for (schema.relationships.items) |rel| {
         if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.references_table);
+        defer allocator.free(normalized_table);
+        const type_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
         defer allocator.free(type_name);
 
         try writer.print(
@@ -176,7 +179,10 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
 
     for (schema.has_many_relationships.items) |rel| {
         if (std.mem.eql(u8, rel.foreign_table, schema.name)) continue;
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.foreign_table);
+        defer allocator.free(normalized_table);
+        const type_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
         defer allocator.free(type_name);
 
         try writer.print(
@@ -196,7 +202,10 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
         const field_name = try utils.relationshipToFieldName(allocator, rel);
         defer allocator.free(field_name);
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.references_table);
+        defer allocator.free(normalized_table);
+        const type_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
         defer allocator.free(type_name);
 
         try writer.print("        {s}: {s}IncludeClauseInput,\n", .{ field_name, type_name });
@@ -210,7 +219,10 @@ pub fn generateStructDefinition(writer: anytype, schema: TableSchema, struct_nam
         defer allocator.free(camel);
         if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
 
-        const type_name = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.foreign_table);
+        defer allocator.free(normalized_table);
+        const type_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
         defer allocator.free(type_name);
 
         try writer.print("        {s}: {s}IncludeClauseInput,\n", .{ camel, type_name });
@@ -731,11 +743,14 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
         // Skip self-references for method generation - we'll use @This() for those
         const is_self_reference = std.mem.eql(u8, rel.references_table, schema.name);
 
-        // Use PascalCase non-singular to match struct names (Comments, not Comment)
+        // Normalize table name and use PascalCase non-singular to match struct names (Comments, not Comment)
         const related_struct_name = if (is_self_reference)
             try allocator.dupe(u8, struct_name)
-        else
-            try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        else blk: {
+            const normalized_table = try utils.toLowerSnakeCase(allocator, rel.references_table);
+            defer allocator.free(normalized_table);
+            break :blk try utils.toPascalCaseNonSingular(allocator, normalized_table);
+        };
         defer allocator.free(related_struct_name);
 
         const is_plural = (rel.relationship_type == .one_to_many or rel.relationship_type == .many_to_many);
@@ -886,11 +901,14 @@ pub fn generateRelationshipMethods(writer: anytype, schema: TableSchema, struct_
         // Skip self-references for method generation - we'll use struct_name for those
         const is_self_reference = std.mem.eql(u8, rel.foreign_table, schema.name);
 
-        // Use PascalCase non-singular to match struct names (Comments, not Comment)
+        // Normalize table name and use PascalCase non-singular to match struct names (Comments, not Comment)
         const related_struct_name = if (is_self_reference)
             try allocator.dupe(u8, struct_name)
-        else
-            try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        else blk: {
+            const normalized_table = try utils.toLowerSnakeCase(allocator, rel.foreign_table);
+            defer allocator.free(normalized_table);
+            break :blk try utils.toPascalCaseNonSingular(allocator, normalized_table);
+        };
         defer allocator.free(related_struct_name);
 
         // Create method name from relationship name: "user_posts" -> "Posts"
@@ -957,7 +975,10 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
         if (std.mem.eql(u8, rel.references_table, schema.name)) continue;
 
         const field_name = try utils.relationshipToFieldName(allocator, rel);
-        const related_type = try utils.toPascalCaseNonSingular(allocator, rel.references_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.references_table);
+        defer allocator.free(normalized_table);
+        const related_type = try utils.toPascalCaseNonSingular(allocator, normalized_table);
         const is_many = rel.relationship_type == .one_to_many or rel.relationship_type == .many_to_many;
 
         try relations.append(allocator, .{
@@ -977,7 +998,10 @@ pub fn generateRelationTypes(writer: anytype, schema: TableSchema, struct_name: 
         if (camel.len > 0) camel[0] = std.ascii.toLower(camel[0]);
         allocator.free(field_name);
 
-        const related_type = try utils.toPascalCaseNonSingular(allocator, rel.foreign_table);
+        // Normalize to snake_case before PascalCase conversion
+        const normalized_table = try utils.toLowerSnakeCase(allocator, rel.foreign_table);
+        defer allocator.free(normalized_table);
+        const related_type = try utils.toPascalCaseNonSingular(allocator, normalized_table);
 
         try relations.append(allocator, .{
             .field_name = camel,

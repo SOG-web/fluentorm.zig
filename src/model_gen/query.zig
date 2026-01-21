@@ -76,18 +76,18 @@ pub fn generateImports(writer: anytype, schema: TableSchema) !void {
 
         var iter = seen_tables.keyIterator();
         while (iter.next()) |table_name| {
-            // Use PascalCase non-singular for struct reference
-            const struct_name = try utils.toPascalCaseNonSingular(allocator, table_name.*);
-            defer allocator.free(struct_name);
+            // Normalize table name to snake_case for directory lookup
+            const normalized_table = try utils.toLowerSnakeCase(allocator, table_name.*);
+            defer allocator.free(normalized_table);
 
-            // Use snake_case for directory name
-            const dir_name = try utils.toLowerSnakeCase(allocator, table_name.*);
-            defer allocator.free(dir_name);
+            // Use PascalCase non-singular for struct reference
+            const struct_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
+            defer allocator.free(struct_name);
 
             // Import from sibling directory: @import("../users/model.zig")
             try writer.print("const {s} = @import(\"../{s}/model.zig\");\n", .{
                 struct_name,
-                dir_name,
+                normalized_table,
             });
         }
     }
