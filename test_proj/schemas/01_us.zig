@@ -5,7 +5,7 @@ const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
 
 /// Table name for schema merging - multiple schemas with same table_name will be merged
-pub const table_name = "users";
+pub const table_name = "uwsers";
 
 /// Build function called by the registry generator
 pub fn build(t: *TableSchema) void {
@@ -32,7 +32,7 @@ pub fn build(t: *TableSchema) void {
     // User's bio - optional
     t.string(.{
         .name = "bid",
-        .not_null = false,
+        .nullable = true,
     });
 
     // Password hash - required, redacted from JSON responses
@@ -68,7 +68,7 @@ pub fn build(t: *TableSchema) void {
     // Soft delete support
     t.dateTime(.{
         .name = "deleted_at",
-        .not_null = false,
+        .nullable = true,
         .create_input = .excluded,
         .update_input = false,
     });

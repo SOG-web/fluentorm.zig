@@ -33,14 +33,14 @@ pub fn build(t: *TableSchema) void {
     // Category description - optional
     t.string(.{
         .name = "description",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Category color for UI - optional
     t.string(.{
         .name = "color",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
         .default_value = "'#3B82F6'",
     });

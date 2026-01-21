@@ -17,10 +17,10 @@ pub const FieldInput = struct {
     // Constraints
     primary_key: bool = false,
     unique: bool = false,
-    not_null: bool = true,
+    nullable: bool = false,
 
     // Generation hints
-    create_input: InputMode = .required,
+    create_input: ?InputMode = null,
     update_input: bool = true,
 
     // JSON response hints
@@ -161,13 +161,14 @@ pub fn addIndexes(self: *TableSchema, list: []const Index) void {
 
 pub fn bigInt(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .i64 else .i64_optional,
+        .type = if (field.nullable) .i64_optional else .i64,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -185,7 +186,7 @@ pub fn bigIncrements(self: *TableSchema, field: FieldInput) void {
         .primary_key = field.primary_key,
         .unique = true,
         .not_null = true,
-        .create_input = .required,
+        .create_input = .optional,
         .update_input = false,
         .redacted = field.redacted,
         .default_value = null,
@@ -198,13 +199,14 @@ pub fn bigIncrements(self: *TableSchema, field: FieldInput) void {
 
 pub fn integer(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .i32 else .i32_optional,
+        .type = if (field.nullable) .i32_optional else .i32,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -222,7 +224,7 @@ pub fn increments(self: *TableSchema, field: FieldInput) void {
         .primary_key = field.primary_key,
         .unique = true,
         .not_null = true,
-        .create_input = .required,
+        .create_input = .optional,
         .update_input = false,
         .redacted = field.redacted,
         .default_value = null,
@@ -235,13 +237,14 @@ pub fn increments(self: *TableSchema, field: FieldInput) void {
 
 pub fn binary(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .binary else .binary_optional,
+        .type = if (field.nullable) .binary_optional else .binary,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -253,13 +256,14 @@ pub fn binary(self: *TableSchema, field: FieldInput) void {
 
 pub fn boolean(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .bool else .bool_optional,
+        .type = if (field.nullable) .bool_optional else .bool,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -271,13 +275,14 @@ pub fn boolean(self: *TableSchema, field: FieldInput) void {
 
 pub fn string(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .text else .text_optional,
+        .type = if (field.nullable) .text_optional else .text,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -289,13 +294,14 @@ pub fn string(self: *TableSchema, field: FieldInput) void {
 
 pub fn uuid(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .uuid else .uuid_optional,
+        .type = if (field.nullable) .uuid_optional else .uuid,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value orelse "gen_random_uuid()",
@@ -308,13 +314,14 @@ pub fn uuid(self: *TableSchema, field: FieldInput) void {
 
 pub fn dateTime(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .timestamp else .timestamp_optional,
+        .type = if (field.nullable) .timestamp_optional else .timestamp,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -375,13 +382,14 @@ pub fn softDelete(self: *TableSchema) void {
 
 pub fn float(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .f32 else .f32_optional,
+        .type = if (field.nullable) .f32_optional else .f32,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -393,13 +401,14 @@ pub fn float(self: *TableSchema, field: FieldInput) void {
 
 pub fn numeric(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .f64 else .f64_optional,
+        .type = if (field.nullable) .f64_optional else .f64,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -411,13 +420,14 @@ pub fn numeric(self: *TableSchema, field: FieldInput) void {
 
 pub fn json(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .json else .json_optional,
+        .type = if (field.nullable) .json_optional else .json,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,
@@ -429,13 +439,14 @@ pub fn json(self: *TableSchema, field: FieldInput) void {
 
 pub fn jsonb(self: *TableSchema, field: FieldInput) void {
     if (self.err != null) return;
+    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.not_null) .jsonb else .jsonb_optional,
+        .type = if (field.nullable) .jsonb_optional else .jsonb,
         .primary_key = field.primary_key,
         .unique = field.unique,
-        .not_null = field.not_null,
-        .create_input = field.create_input,
+        .not_null = !field.nullable,
+        .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
         .default_value = field.default_value,

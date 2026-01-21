@@ -7,8 +7,8 @@ const Model = @import("model.zig");
 const Posts = @import("../posts/model.zig");
 const Comments = @import("../comments/model.zig");
 
-/// Users with posts relation loaded
-pub const UsersWithPosts = struct {
+/// Uwsers with posts relation loaded
+pub const UwsersWithPosts = struct {
     id: []const u8,
     email: []const u8,
     name: []const u8,
@@ -22,7 +22,7 @@ pub const UsersWithPosts = struct {
     bio: ?[]const u8,
     posts: ?[]Posts = null,
 
-    /// Create from a base Users model with relation set to null
+    /// Create from a base Uwsers model with relation set to null
     pub fn fromBase(model: Model) @This() {
         return .{
             .id = model.id,
@@ -40,7 +40,7 @@ pub const UsersWithPosts = struct {
         };
     }
 
-    /// Extract the base Users model (without relation)
+    /// Extract the base Uwsers model (without relation)
     pub fn toBase(self: @This()) Model {
         return .{
             .id = self.id,
@@ -91,8 +91,8 @@ pub const UsersWithPosts = struct {
     }
 };
 
-/// Users with comments relation loaded
-pub const UsersWithComments = struct {
+/// Uwsers with comments relation loaded
+pub const UwsersWithComments = struct {
     id: []const u8,
     email: []const u8,
     name: []const u8,
@@ -106,7 +106,7 @@ pub const UsersWithComments = struct {
     bio: ?[]const u8,
     comments: ?[]Comments = null,
 
-    /// Create from a base Users model with relation set to null
+    /// Create from a base Uwsers model with relation set to null
     pub fn fromBase(model: Model) @This() {
         return .{
             .id = model.id,
@@ -124,7 +124,7 @@ pub const UsersWithComments = struct {
         };
     }
 
-    /// Extract the base Users model (without relation)
+    /// Extract the base Uwsers model (without relation)
     pub fn toBase(self: @This()) Model {
         return .{
             .id = self.id,
@@ -175,8 +175,8 @@ pub const UsersWithComments = struct {
     }
 };
 
-/// Users with all relations loaded
-pub const UsersWithAllRelations = struct {
+/// Uwsers with all relations loaded
+pub const UwsersWithAllRelations = struct {
     id: []const u8,
     email: []const u8,
     name: []const u8,
@@ -191,7 +191,7 @@ pub const UsersWithAllRelations = struct {
     posts: ?[]Posts = null,
     comments: ?[]Comments = null,
 
-    /// Create from a base Users model with all relations set to null
+    /// Create from a base Uwsers model with all relations set to null
     pub fn fromBase(model: Model) @This() {
         return .{
             .id = model.id,
@@ -210,7 +210,7 @@ pub const UsersWithAllRelations = struct {
         };
     }
 
-    /// Extract the base Users model (without relations)
+    /// Extract the base Uwsers model (without relations)
     pub fn toBase(self: @This()) Model {
         return .{
             .id = self.id,

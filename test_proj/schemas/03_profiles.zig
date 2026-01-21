@@ -27,35 +27,35 @@ pub fn build(t: *TableSchema) void {
     // Profile bio - optional
     t.string(.{
         .name = "bio",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Avatar URL - optional
     t.string(.{
         .name = "avatar_url",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Website - optional
     t.string(.{
         .name = "website",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Location - optional
     t.string(.{
         .name = "location",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Date of birth - optional
     t.dateTime(.{
         .name = "date_of_birth",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
@@ -80,7 +80,7 @@ pub fn build(t: *TableSchema) void {
     t.hasOne(.{
         .name = "profile_user",
         .column = "user_id",
-        .references_table = "users",
+        .references_table = "uwsers",
         .on_delete = .cascade,
     });
 }

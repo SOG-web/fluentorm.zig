@@ -111,7 +111,7 @@ t.string(.{
 ```zig
 t.integer(.{
     .name = "age",
-    .not_null = true,
+     .nullable = false,e,
 });
 ```
 
@@ -146,7 +146,7 @@ t.float(.{
 ```zig
 t.numeric(.{
     .name = "price",
-    .not_null = true,
+     .nullable = false,e,
 });
 ```
 
@@ -185,7 +185,7 @@ t.dateTime(.{
 ```zig
 t.json(.{
     .name = "metadata",
-    .not_null = false,
+     .nullable = true,
 });
 ```
 
@@ -197,7 +197,7 @@ t.json(.{
 ```zig
 t.jsonb(.{
     .name = "settings",
-    .not_null = false,
+     .nullable = true,
 });
 ```
 
@@ -224,7 +224,7 @@ All field types accept these common options:
     .name = "field_name",              // Required: column name in database
     .primary_key = false,              // Mark as primary key
     .unique = false,                   // Add UNIQUE constraint
-    .not_null = true,                  // NOT NULL constraint (default: true)
+     .nullable = false,e,                  // NOT NULL constraint (default: true)
     .create_input = .required,         // Include in CreateInput (.required, .optional, .excluded)
     .update_input = true,              // Include in UpdateInput (true/false)
     .redacted = false,                 // Exclude from JSON responses (e.g., passwords)
@@ -252,7 +252,7 @@ t.uuid(.{
 // Example: Optional bio
 t.string(.{
     .name = "bio",
-    .not_null = false,
+     .nullable = true,
     .create_input = .optional,  // User may or may not provide bio
 });
 
@@ -350,7 +350,7 @@ This is equivalent to manually defining:
 ```zig
 t.dateTime(.{
     .name = "deleted_at",
-    .not_null = false,
+     .nullable = true,
     .create_input = .excluded,
     .update_input = false,
 });
@@ -471,13 +471,13 @@ pub fn build(t: *TableSchema) void {
     // Original field definition
     t.string(.{
         .name = "bio",
-        .not_null = true,
+         .nullable = false,e,
     });
 
     // Later, alter it to be optional and redacted
     t.alterField(.{
         .name = "bio",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
         .redacted = true,
     });
@@ -509,7 +509,7 @@ Use `alterFields()` to modify multiple fields at once:
 ```zig
 t.alterFields(&.{
     .{ .name = "email", .unique = true },
-    .{ .name = "bio", .not_null = false, .redacted = true },
+    .{ .name = "bio",  .nullable = true, .redacted = true },
     .{ .name = "password_hash", .redacted = true },
 });
 ```
@@ -552,7 +552,7 @@ pub fn build(t: *TableSchema) void {
     // Optional fields
     t.string(.{
         .name = "bio",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
     });
 

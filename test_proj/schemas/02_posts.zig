@@ -58,7 +58,7 @@ pub fn build(t: *TableSchema) void {
     t.belongsTo(.{
         .name = "post_author",
         .column = "user_id",
-        .references_table = "users",
+        .references_table = "uwsers",
         .on_delete = .cascade,
     });
 

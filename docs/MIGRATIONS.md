@@ -208,7 +208,7 @@ pub fn build(t: *TableSchema) void {
     // Add a new field
     t.string(.{
         .name = "phone",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
     });
 }
@@ -232,13 +232,13 @@ pub fn build(t: *TableSchema) void {
     // Original field definition
     t.string(.{
         .name = "bio",
-        .not_null = true,
+         .nullable = false,
     });
 
     // Later, alter it to be optional and redacted
     t.alterField(.{
         .name = "bio",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
         .redacted = true,
     });
@@ -268,7 +268,7 @@ Use `alterFields()` to modify multiple fields at once:
 ```zig
 t.alterFields(&.{
     .{ .name = "email", .unique = true },
-    .{ .name = "bio", .not_null = false, .redacted = true },
+    .{ .name = "bio",  .nullable = true, .redacted = true },
     .{ .name = "password_hash", .redacted = true },
 });
 ```
@@ -355,7 +355,7 @@ When changing field properties, use `alterField()` instead of modifying the orig
 t.string(.{ .name = "bio" });
 
 // Later modification - clear intent
-t.alterField(.{ .name = "bio", .not_null = false, .redacted = true });
+t.alterField(.{ .name = "bio",  .nullable = true, .redacted = true });
 ```
 
 ## Troubleshooting
@@ -553,7 +553,7 @@ pub fn build(t: *TableSchema) void {
     // Add a new field
     t.string(.{
         .name = "phone",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
     });
 }
@@ -578,13 +578,13 @@ pub fn build(t: *TableSchema) void {
     // Original field definition
     t.string(.{
         .name = "bio",
-        .not_null = true,
+         .nullable = false,
     });
 
     // Later, alter it to be optional and redacted
     t.alterField(.{
         .name = "bio",
-        .not_null = false,
+         .nullable = true,
         .create_input = .optional,
         .redacted = true,
     });
@@ -616,7 +616,7 @@ Use `alterFields()` to modify multiple fields at once:
 ```zig
 t.alterFields(&.{
     .{ .name = "email", .unique = true },
-    .{ .name = "bio", .not_null = false, .redacted = true },
+    .{ .name = "bio",  .nullable = true, .redacted = true },
     .{ .name = "password_hash", .redacted = true },
 });
 ```
@@ -706,7 +706,7 @@ When changing field properties, use `alterField()` instead of modifying the orig
 t.string(.{ .name = "bio" });
 
 // Later modification - clear intent
-t.alterField(.{ .name = "bio", .not_null = false, .redacted = true });
+t.alterField(.{ .name = "bio",  .nullable = true, .redacted = true });
 ```
 
 ## Available DDL Operations
