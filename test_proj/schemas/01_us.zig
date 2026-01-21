@@ -32,7 +32,7 @@ pub fn build(t: *TableSchema) void {
     // User's bio - optional
     t.string(.{
         .name = "bid",
-        .not_null = false,
+        .nullable = true,
     });
 
     // Password hash - required, redacted from JSON responses
@@ -68,7 +68,7 @@ pub fn build(t: *TableSchema) void {
     // Soft delete support
     t.dateTime(.{
         .name = "deleted_at",
-        .not_null = false,
+        .nullable = true,
         .create_input = .excluded,
         .update_input = false,
     });

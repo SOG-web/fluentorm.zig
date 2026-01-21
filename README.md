@@ -317,7 +317,7 @@ Common options for all field types:
     .name = "field_name",              // Required: field name
     .primary_key = false,              // Is this a primary key?
     .unique = false,                   // Add unique constraint?
-    .not_null = true,                  // Field is NOT NULL?
+     .nullable = false,e,                  // Field is NOT NULL?
     .create_input = .required,         // .required, .optional, or .excluded
     .update_input = true,              // Include in UpdateInput?
     .redacted = false,                 // Exclude from JSON responses?

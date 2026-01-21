@@ -98,7 +98,7 @@ const Uwsers = @This();
     pub const CreateInput = struct {
         email: []const u8,
         name: []const u8,
-        bid: ?[]const u8,
+        bid: ?[]const u8 = null,
         password_hash: []const u8,
         is_active: ?bool = null,
         phone: ?[]const u8 = null,

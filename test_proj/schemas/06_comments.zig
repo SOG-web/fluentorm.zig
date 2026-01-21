@@ -31,7 +31,7 @@ pub fn build(t: *TableSchema) void {
     // Parent comment for nested replies - optional (null for top-level comments)
     t.uuid(.{
         .name = "parent_id",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
         .auto_generated = false,
         .default_value = "skip",
@@ -74,7 +74,7 @@ pub fn build(t: *TableSchema) void {
     // Soft delete support
     t.dateTime(.{
         .name = "deleted_at",
-        .not_null = false,
+        .nullable = true,
         .create_input = .excluded,
         .update_input = false,
     });

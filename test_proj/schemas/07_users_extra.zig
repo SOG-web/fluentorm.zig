@@ -12,14 +12,14 @@ pub fn build(t: *TableSchema) void {
     // Add phone number field
     t.string(.{
         .name = "phone",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 
     // Add bio field
     t.string(.{
         .name = "bio",
-        .not_null = false,
+        .nullable = true,
         .create_input = .optional,
     });
 }
