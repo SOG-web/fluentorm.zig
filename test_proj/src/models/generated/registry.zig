@@ -9,6 +9,8 @@ pub const Profiles = @import("profiles/model.zig");
 pub const Categories = @import("categories/model.zig");
 pub const PostCategories = @import("post_categories/model.zig");
 pub const Comments = @import("comments/model.zig");
+pub const Organizations = @import("organizations/model.zig");
+pub const OrganizationUsers = @import("organization_users/model.zig");
 
 pub const Client = struct {
     // Stateless client: simply acts as a namespace for models.
@@ -20,6 +22,8 @@ pub const Client = struct {
     pub const Categories = @import("categories/model.zig");
     pub const PostCategories = @import("post_categories/model.zig");
     pub const Comments = @import("comments/model.zig");
+    pub const Organizations = @import("organizations/model.zig");
+    pub const OrganizationUsers = @import("organization_users/model.zig");
 
     // Relation types for eager loading (use with fetchAs)
     pub const Rel = struct {
@@ -29,6 +33,8 @@ pub const Client = struct {
         pub const Categories = @import("categories/rel.zig");
         pub const PostCategories = @import("post_categories/rel.zig");
         pub const Comments = @import("comments/rel.zig");
+        pub const Organizations = @import("organizations/rel.zig");
+        pub const OrganizationUsers = @import("organization_users/rel.zig");
     };
 };
 
@@ -39,6 +45,8 @@ pub const Tables = enum {
     categories,
     post_categories,
     comments,
+    organizations,
+    organization_users,
 
     pub fn isFieldDateTime(self: @This(), field_name: []const u8) bool {
         return switch (self) {
@@ -48,6 +56,8 @@ pub const Tables = enum {
             .categories => if (std.meta.stringToEnum(Categories.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .post_categories => if (std.meta.stringToEnum(PostCategories.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .comments => if (std.meta.stringToEnum(Comments.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .organizations => if (std.meta.stringToEnum(Organizations.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .organization_users => if (std.meta.stringToEnum(OrganizationUsers.FieldEnum, field_name)) |f| f.isDateTime() else false,
         };
     }
 
@@ -59,6 +69,8 @@ pub const Tables = enum {
             .categories => Categories.json_all_fields_sql,
             .post_categories => PostCategories.json_all_fields_sql,
             .comments => Comments.json_all_fields_sql,
+            .organizations => Organizations.json_all_fields_sql,
+            .organization_users => OrganizationUsers.json_all_fields_sql,
         };
     }
 };
@@ -70,6 +82,8 @@ pub const TableFields = struct {
     categories: Categories.FieldEnum,
     post_categories: PostCategories.FieldEnum,
     comments: Comments.FieldEnum,
+    organizations: Organizations.FieldEnum,
+    organization_users: OrganizationUsers.FieldEnum,
 };
 
 pub const TableFieldsUnion = union(Tables) {
@@ -79,6 +93,8 @@ pub const TableFieldsUnion = union(Tables) {
     categories: Categories.FieldEnum,
     post_categories: PostCategories.FieldEnum,
     comments: Comments.FieldEnum,
+    organizations: Organizations.FieldEnum,
+    organization_users: OrganizationUsers.FieldEnum,
 
     pub fn toString(self: @This()) []const u8 {
         return switch (self) {            .uwsers => |f| @tagName(f),
@@ -87,6 +103,8 @@ pub const TableFieldsUnion = union(Tables) {
             .categories => |f| @tagName(f),
             .post_categories => |f| @tagName(f),
             .comments => |f| @tagName(f),
+            .organizations => |f| @tagName(f),
+            .organization_users => |f| @tagName(f),
         };
     }
 };

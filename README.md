@@ -120,6 +120,8 @@ Create a `schemas/` directory and define your tables using the naming convention
 const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
 
+pub const table_name = "users";
+
 pub fn build(t: *TableSchema) void {
     // Primary key - UUID auto-generated
     t.uuid(.{
@@ -148,6 +150,8 @@ pub fn build(t: *TableSchema) void {
 ```zig
 const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
+
+pub const table_name = "posts";
 
 pub fn build(t: *TableSchema) void {
     t.uuid(.{
