@@ -21,11 +21,25 @@ pub fn main() !void {
     try std.fs.cwd().makePath(output_dir);
 
 
+    // Build table name -> directory name mapping
+    // This handles cases where schema.name might differ from the actual directory name
+    var table_map = std.StringHashMap([]const u8).init(allocator);
+    defer {
+        var it = table_map.valueIterator();
+        while (it.next()) |v| allocator.free(v.*);
+        table_map.deinit();
+    }
+    for (schemas) |schema_item| {
+        // Use table name directly as directory name
+        const dir_name = try allocator.dupe(u8, schema_item.name);
+        try table_map.put(schema_item.name, dir_name);
+    }
+
     // Generate models (always)
     for (schemas) |schema_item| {
         const schema_file = try std.fmt.allocPrint(allocator, "{s}.zig", .{schema_item.name});
         defer allocator.free(schema_file);
-        try model_generator.generateModel(allocator, schema_item, schema_file, output_dir);
+        try model_generator.generateModel(allocator, schema_item, schema_file, output_dir, table_map);
     }
 
     try model_generator.generateRegistryFile(allocator, schemas, output_dir);

@@ -5,7 +5,7 @@ const fluentorm = @import("fluentorm");
 const TableSchema = fluentorm.TableSchema;
 
 /// Table name for schema merging - SAME as 01_users.zig to merge into users table
-pub const table_name = "users";
+pub const table_name = "uwsers";
 
 /// Build function - adds extra fields to users table
 pub fn build(t: *TableSchema) void {

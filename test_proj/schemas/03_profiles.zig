@@ -80,7 +80,7 @@ pub fn build(t: *TableSchema) void {
     t.hasOne(.{
         .name = "profile_user",
         .column = "user_id",
-        .references_table = "users",
+        .references_table = "uwsers",
         .on_delete = .cascade,
     });
 }

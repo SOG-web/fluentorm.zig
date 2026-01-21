@@ -9,15 +9,12 @@ const utils = @import("model_gen/utils.zig");
 const Relationship = @import("schema.zig").Relationship;
 const TableSchema = @import("table.zig").TableSchema;
 
-pub fn generateModel(allocator: std.mem.Allocator, schema: TableSchema, schema_file: []const u8, output_dir: []const u8) !void {
+pub fn generateModel(allocator: std.mem.Allocator, schema: TableSchema, schema_file: []const u8, output_dir: []const u8, table_map: std.StringHashMap([]const u8)) !void {
     const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
     defer allocator.free(struct_name);
 
-    const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
-    defer allocator.free(snake_case_name);
-
-    // Create sub-directory: src/models/generated/{table_name}/
-    const model_dir = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ output_dir, snake_case_name });
+    // Create sub-directory using table name directly: src/models/generated/{table_name}/
+    const model_dir = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ output_dir, schema.name });
     defer allocator.free(model_dir);
 
     std.fs.cwd().makePath(model_dir) catch |err| {
@@ -28,7 +25,7 @@ pub fn generateModel(allocator: std.mem.Allocator, schema: TableSchema, schema_f
     };
 
     // Generate model declarations and logic (model.zig)
-    try generateModelFile(allocator, schema, struct_name, schema_file, model_dir);
+    try generateModelFile(allocator, schema, struct_name, schema_file, model_dir, table_map);
 
     // Generate query builder extensions (query.zig)
     try generateQueryFile(allocator, schema, schema_file, model_dir);
@@ -55,10 +52,8 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     for (schemas) |schema| {
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
-        const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
-        defer allocator.free(snake_case_name);
 
-        try writer.print("pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, snake_case_name });
+        try writer.print("pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, schema.name });
     }
 
     try writer.writeAll("\n");
@@ -74,10 +69,8 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     for (schemas) |schema| {
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
-        const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
-        defer allocator.free(snake_case_name);
 
-        try writer.print("    pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, snake_case_name });
+        try writer.print("    pub const {s} = @import(\"{s}/model.zig\");\n", .{ struct_name, schema.name });
     }
 
     // Add Rel namespace for relation types
@@ -90,9 +83,7 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
 
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
-        const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
-        defer allocator.free(snake_case_name);
-        try writer.print("        pub const {s} = @import(\"{s}/rel.zig\");\n", .{ struct_name, snake_case_name });
+        try writer.print("        pub const {s} = @import(\"{s}/rel.zig\");\n", .{ struct_name, schema.name });
     }
     try writer.writeAll("    };\n");
 
@@ -185,7 +176,7 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
 }
 
 // Helper to generate the main model file
-fn generateModelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_name: []const u8, schema_file: []const u8, output_dir: []const u8) !void {
+fn generateModelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_name: []const u8, schema_file: []const u8, output_dir: []const u8, table_map: std.StringHashMap([]const u8)) !void {
     const file_name = try std.fmt.allocPrint(allocator, "{s}/model.zig", .{output_dir});
     defer allocator.free(file_name);
 
@@ -201,7 +192,7 @@ fn generateModelFile(allocator: std.mem.Allocator, schema: TableSchema, struct_n
     try model.generateHeader(writer, schema_file);
 
     // Generate imports
-    try model.generateModelImports(writer, schema, allocator);
+    try model.generateModelImports(writer, schema, allocator, table_map);
 
     // Generate struct definition (Strict)
     try model.generateStructDefinition(writer, schema, struct_name, final_fields, allocator);

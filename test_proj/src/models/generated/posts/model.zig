@@ -14,10 +14,10 @@ const err = @import("../error.zig");
 const OrmError = err.OrmError;
 
 // Related models
-const Users = @import("../users/model.zig");
-const UsersQuery = @import("../users/query.zig");
 const Comments = @import("../comments/model.zig");
 const CommentsQuery = @import("../comments/query.zig");
+const Uwsers = @import("../uwsers/model.zig");
+const UwsersQuery = @import("../uwsers/query.zig");
 
 const Posts = @This();
 
@@ -58,15 +58,15 @@ const Posts = @This();
 
     pub fn getRelation(rel: RelationEnum) Relationship {
         return switch (rel) {
-            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .posts = .user_id } },
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .uwsers, .foreign_key = .{ .uwsers = .id }, .local_key = .{ .posts = .user_id } },
             .comments => .{ .name = "comments", .type = .hasMany, .foreign_table = .comments, .foreign_key = .{ .comments = .post_id }, .local_key = .{ .posts = .id } },
         };
     }
 
-    pub const UsersIncludeClauseInput = struct {
+    pub const UwsersIncludeClauseInput = struct {
         model_name: RelationEnum,
-        select: []const Users.FieldEnum = &.{},
-        where: []const UsersQuery.WhereClause = &.{},
+        select: []const Uwsers.FieldEnum = &.{},
+        where: []const UwsersQuery.WhereClause = &.{},
     };
 
     pub const CommentsIncludeClauseInput = struct {
@@ -76,7 +76,7 @@ const Posts = @This();
     };
 
     pub const IncludeClauseInput = union(RelationEnum) {
-        user: UsersIncludeClauseInput,
+        user: UwsersIncludeClauseInput,
         comments: CommentsIncludeClauseInput,
     };
 
@@ -258,9 +258,9 @@ const Posts = @This();
         };
     }
     // Relationship methods
-    /// Fetch the related Users record for this Posts
-    pub fn fetchUser(self: *const Posts, db: Executor, allocator: std.mem.Allocator) err.Result(?Users) {
-        return Users.findById(db, allocator, self.user_id);
+    /// Fetch the related Uwsers record for this Posts
+    pub fn fetchUser(self: *const Posts, db: Executor, allocator: std.mem.Allocator) err.Result(?Uwsers) {
+        return Uwsers.findById(db, allocator, self.user_id);
     }
 
     /// Fetch all related Comments records for this Posts (one-to-many)

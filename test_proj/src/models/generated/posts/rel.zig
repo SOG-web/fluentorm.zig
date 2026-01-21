@@ -4,11 +4,11 @@
 const std = @import("std");
 const Row = @import("pg").Row;
 const Model = @import("model.zig");
-const Users = @import("../users/model.zig");
+const Uwsers = @import("../uwsers/model.zig");
 const Comments = @import("../comments/model.zig");
 
 /// Posts with user relation loaded
-pub const PostsWithUsers = struct {
+pub const PostsWithUwsers = struct {
     id: []const u8,
     title: []const u8,
     content: []const u8,
@@ -18,7 +18,7 @@ pub const PostsWithUsers = struct {
     created_at: i64,
     updated_at: i64,
     deleted_at: ?i64,
-    user: ?Users = null,
+    user: ?Uwsers = null,
 
     /// Create from a base Posts model with relation set to null
     pub fn fromBase(model: Model) @This() {
@@ -70,7 +70,7 @@ pub const PostsWithUsers = struct {
         // Parse JSONB relation: user
         const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+            if (std.json.parseFromSlice(Uwsers, allocator, json_str, .{})) |parsed| {
                 result.user = parsed.value;
             } else |_| {
                 result.user = null;
@@ -170,7 +170,7 @@ pub const PostsWithAllRelations = struct {
     created_at: i64,
     updated_at: i64,
     deleted_at: ?i64,
-    user: ?Users = null,
+    user: ?Uwsers = null,
     comments: ?[]Comments = null,
 
     /// Create from a base Posts model with all relations set to null
@@ -224,7 +224,7 @@ pub const PostsWithAllRelations = struct {
         // Parse JSONB relations
         const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+            if (std.json.parseFromSlice(Uwsers, allocator, json_str, .{})) |parsed| {
                 result.user = parsed.value;
             } else |_| {
                 result.user = null;

@@ -18,7 +18,7 @@ pub fn generateHeader(writer: anytype, schema_file: []const u8) !void {
     , .{ schema_file, schema_file });
 }
 
-pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator) !void {
+pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std.mem.Allocator, table_map: std.StringHashMap([]const u8)) !void {
     try writer.writeAll(
         \\const std = @import("std");
         \\const pg = @import("pg");
@@ -62,22 +62,27 @@ pub fn generateModelImports(writer: anytype, schema: TableSchema, allocator: std
 
         var iter = seen_tables.keyIterator();
         while (iter.next()) |table_name| {
-            // Normalize table name to snake_case for directory lookup
-            const normalized_table = try utils.toLowerSnakeCase(allocator, table_name.*);
-            defer allocator.free(normalized_table);
+            // Look up the directory name from the table_map
+            const dir_name = table_map.get(table_name.*) orelse blk: {
+                // Fallback: normalize table name to snake_case for directory lookup
+                const normalized = try utils.toLowerSnakeCase(allocator, table_name.*);
+                break :blk normalized;
+            };
+            const should_free = table_map.get(table_name.*) == null;
+            defer if (should_free) allocator.free(dir_name);
 
             // Use PascalCase non-singular for struct reference
-            const struct_name = try utils.toPascalCaseNonSingular(allocator, normalized_table);
+            const struct_name = try utils.toPascalCaseNonSingular(allocator, dir_name);
             defer allocator.free(struct_name);
 
             // Import from sibling directory: @import("../users/model.zig")
             try writer.print("const {s} = @import(\"../{s}/model.zig\");\n", .{
                 struct_name,
-                normalized_table,
+                dir_name,
             });
             try writer.print("const {s}Query = @import(\"../{s}/query.zig\");\n", .{
                 struct_name,
-                normalized_table,
+                dir_name,
             });
         }
     }

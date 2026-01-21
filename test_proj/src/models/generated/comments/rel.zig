@@ -5,7 +5,7 @@ const std = @import("std");
 const Row = @import("pg").Row;
 const Model = @import("model.zig");
 const Posts = @import("../posts/model.zig");
-const Users = @import("../users/model.zig");
+const Uwsers = @import("../uwsers/model.zig");
 
 /// Comments with post relation loaded
 pub const CommentsWithPosts = struct {
@@ -88,7 +88,7 @@ pub const CommentsWithPosts = struct {
 };
 
 /// Comments with user relation loaded
-pub const CommentsWithUsers = struct {
+pub const CommentsWithUwsers = struct {
     id: []const u8,
     post_id: []const u8,
     user_id: []const u8,
@@ -99,7 +99,7 @@ pub const CommentsWithUsers = struct {
     created_at: i64,
     updated_at: i64,
     deleted_at: ?i64,
-    user: ?Users = null,
+    user: ?Uwsers = null,
 
     /// Create from a base Comments model with relation set to null
     pub fn fromBase(model: Model) @This() {
@@ -154,7 +154,7 @@ pub const CommentsWithUsers = struct {
         // Parse JSONB relation: user
         const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+            if (std.json.parseFromSlice(Uwsers, allocator, json_str, .{})) |parsed| {
                 result.user = parsed.value;
             } else |_| {
                 result.user = null;
@@ -180,7 +180,7 @@ pub const CommentsWithAllRelations = struct {
     updated_at: i64,
     deleted_at: ?i64,
     post: ?Posts = null,
-    user: ?Users = null,
+    user: ?Uwsers = null,
 
     /// Create from a base Comments model with all relations set to null
     pub fn fromBase(model: Model) @This() {
@@ -246,7 +246,7 @@ pub const CommentsWithAllRelations = struct {
         }
         const user_json = row.getCol(?[]const u8, "user");
         if (user_json) |json_str| {
-            if (std.json.parseFromSlice(Users, allocator, json_str, .{})) |parsed| {
+            if (std.json.parseFromSlice(Uwsers, allocator, json_str, .{})) |parsed| {
                 result.user = parsed.value;
             } else |_| {
                 result.user = null;

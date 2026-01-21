@@ -1,7 +1,7 @@
 // AUTO-GENERATED CODE - DO NOT EDIT
 pub const Client = @import("registry.zig").Client;
 
-pub const Users = Client.Users;
+pub const Uwsers = Client.Uwsers;
 pub const Posts = Client.Posts;
 pub const Profiles = Client.Profiles;
 pub const Categories = Client.Categories;
