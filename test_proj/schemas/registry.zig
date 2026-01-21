@@ -5,7 +5,7 @@ const std = @import("std");
 const TableSchema = @import("fluentorm").TableSchema;
 const SchemaBuilder = @import("fluentorm").SchemaBuilder;
 
-const @"01_users_schema" = @import("01_users.zig");
+const @"01_us_schema" = @import("01_us.zig");
 const @"02_posts_schema" = @import("02_posts.zig");
 const @"03_profiles_schema" = @import("03_profiles.zig");
 const @"04_categories_schema" = @import("04_categories.zig");
@@ -22,7 +22,7 @@ pub const TableInfo = struct {
 /// Tables grouped by table_name with their schema builders
 pub const tables = [_]TableInfo{
     .{ .name = "users", .builders = &[_]SchemaBuilder{
-        .{ .name = "users", .builder_fn = @"01_users_schema".build },
+        .{ .name = "users", .builder_fn = @"01_us_schema".build },
         .{ .name = "users", .builder_fn = @"07_users_extra_schema".build },
     }},
     .{ .name = "posts", .builders = &[_]SchemaBuilder{
