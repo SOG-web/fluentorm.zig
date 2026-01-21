@@ -84,6 +84,10 @@ pub fn generateRegistryFile(allocator: std.mem.Allocator, schemas: []const Table
     try writer.writeAll("\n    // Relation types for eager loading (use with fetchAs)\n");
     try writer.writeAll("    pub const Rel = struct {\n");
     for (schemas) |schema| {
+        // Only include tables that have relationships
+        const has_relationships = schema.relationships.items.len > 0 or schema.has_many_relationships.items.len > 0;
+        if (!has_relationships) continue;
+
         const struct_name = try utils.toPascalCaseNonSingular(allocator, schema.name);
         defer allocator.free(struct_name);
         const snake_case_name = try utils.toLowerSnakeCase(allocator, schema.name);
