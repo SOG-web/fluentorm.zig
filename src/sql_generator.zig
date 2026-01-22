@@ -100,6 +100,9 @@ fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
             try sql.appendSlice(allocator, " DEFAULT CURRENT_TIMESTAMP");
         }
     } else if (field.default_value) |default| {
+        if (std.mem.eql(u8, default, "nil")) {
+            return;
+        }
         try sql.appendSlice(allocator, " DEFAULT ");
         const default_type = fieldTypeToEnum(field.type);
         if (default_type.shouldQuoteDefault(default)) {

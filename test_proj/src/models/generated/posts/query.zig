@@ -26,8 +26,8 @@ const err = @import("../error.zig");
 const OrmError = err.OrmError;
 
 // Related models
+const Users = @import("../users/model.zig");
 const Comments = @import("../comments/model.zig");
-const Uwsers = @import("../uwsers/model.zig");
 
 const Self = @This();
 

@@ -3,108 +3,90 @@
 
 const std = @import("std");
 const pg = @import("pg");
-pub const Uwsers = @import("uwsers/model.zig");
+pub const Users = @import("users/model.zig");
 pub const Posts = @import("posts/model.zig");
 pub const Profiles = @import("profiles/model.zig");
 pub const Categories = @import("categories/model.zig");
 pub const PostCategories = @import("post_categories/model.zig");
 pub const Comments = @import("comments/model.zig");
-pub const Organizations = @import("organizations/model.zig");
-pub const OrganizationUsers = @import("organization_users/model.zig");
 
 pub const Client = struct {
     // Stateless client: simply acts as a namespace for models.
     // This allows access like: Client.Users.findById(db, ...)
     // which supports both pool and transaction based execution.
-    pub const Uwsers = @import("uwsers/model.zig");
+    pub const Users = @import("users/model.zig");
     pub const Posts = @import("posts/model.zig");
     pub const Profiles = @import("profiles/model.zig");
     pub const Categories = @import("categories/model.zig");
     pub const PostCategories = @import("post_categories/model.zig");
     pub const Comments = @import("comments/model.zig");
-    pub const Organizations = @import("organizations/model.zig");
-    pub const OrganizationUsers = @import("organization_users/model.zig");
 
     // Relation types for eager loading (use with fetchAs)
     pub const Rel = struct {
-        pub const Uwsers = @import("uwsers/rel.zig");
+        pub const Users = @import("users/rel.zig");
         pub const Posts = @import("posts/rel.zig");
         pub const Profiles = @import("profiles/rel.zig");
         pub const Categories = @import("categories/rel.zig");
         pub const PostCategories = @import("post_categories/rel.zig");
         pub const Comments = @import("comments/rel.zig");
-        pub const Organizations = @import("organizations/rel.zig");
-        pub const OrganizationUsers = @import("organization_users/rel.zig");
     };
 };
 
 pub const Tables = enum {
-    uwsers,
+    users,
     posts,
     profiles,
     categories,
     post_categories,
     comments,
-    organizations,
-    organization_users,
 
     pub fn isFieldDateTime(self: @This(), field_name: []const u8) bool {
         return switch (self) {
-            .uwsers => if (std.meta.stringToEnum(Uwsers.FieldEnum, field_name)) |f| f.isDateTime() else false,
+            .users => if (std.meta.stringToEnum(Users.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .posts => if (std.meta.stringToEnum(Posts.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .profiles => if (std.meta.stringToEnum(Profiles.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .categories => if (std.meta.stringToEnum(Categories.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .post_categories => if (std.meta.stringToEnum(PostCategories.FieldEnum, field_name)) |f| f.isDateTime() else false,
             .comments => if (std.meta.stringToEnum(Comments.FieldEnum, field_name)) |f| f.isDateTime() else false,
-            .organizations => if (std.meta.stringToEnum(Organizations.FieldEnum, field_name)) |f| f.isDateTime() else false,
-            .organization_users => if (std.meta.stringToEnum(OrganizationUsers.FieldEnum, field_name)) |f| f.isDateTime() else false,
         };
     }
 
     pub fn jsonAllFieldsSql(self: @This()) []const u8 {
         return switch (self) {
-            .uwsers => Uwsers.json_all_fields_sql,
+            .users => Users.json_all_fields_sql,
             .posts => Posts.json_all_fields_sql,
             .profiles => Profiles.json_all_fields_sql,
             .categories => Categories.json_all_fields_sql,
             .post_categories => PostCategories.json_all_fields_sql,
             .comments => Comments.json_all_fields_sql,
-            .organizations => Organizations.json_all_fields_sql,
-            .organization_users => OrganizationUsers.json_all_fields_sql,
         };
     }
 };
 
 pub const TableFields = struct {
-    uwsers: Uwsers.FieldEnum,
+    users: Users.FieldEnum,
     posts: Posts.FieldEnum,
     profiles: Profiles.FieldEnum,
     categories: Categories.FieldEnum,
     post_categories: PostCategories.FieldEnum,
     comments: Comments.FieldEnum,
-    organizations: Organizations.FieldEnum,
-    organization_users: OrganizationUsers.FieldEnum,
 };
 
 pub const TableFieldsUnion = union(Tables) {
-    uwsers: Uwsers.FieldEnum,
+    users: Users.FieldEnum,
     posts: Posts.FieldEnum,
     profiles: Profiles.FieldEnum,
     categories: Categories.FieldEnum,
     post_categories: PostCategories.FieldEnum,
     comments: Comments.FieldEnum,
-    organizations: Organizations.FieldEnum,
-    organization_users: OrganizationUsers.FieldEnum,
 
     pub fn toString(self: @This()) []const u8 {
-        return switch (self) {            .uwsers => |f| @tagName(f),
+        return switch (self) {            .users => |f| @tagName(f),
             .posts => |f| @tagName(f),
             .profiles => |f| @tagName(f),
             .categories => |f| @tagName(f),
             .post_categories => |f| @tagName(f),
             .comments => |f| @tagName(f),
-            .organizations => |f| @tagName(f),
-            .organization_users => |f| @tagName(f),
         };
     }
 };

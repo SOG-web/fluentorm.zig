@@ -16,6 +16,15 @@ pub fn main() !void {
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
+    const now = std.time.microTimestamp();
+    const seconds: i64 = @divFloor(now, 1_000_000);
+
+    const epoch = std.time.epoch.EpochSeconds{ .secs = @intCast(seconds) };
+    const dt = epoch.getEpochDay().calculateYearDay();
+
+    std.debug.print("now time {} \n", .{now});
+    std.debug.print("now datetime {} {} \n", .{ dt.year, dt.day });
+
     // 1. Initialize DB Pool
     const pool = try pg.Pool.init(allocator, .{
         .size = 5,
@@ -278,6 +287,7 @@ pub fn main() !void {
     // 8. Test fetchAs() with multiple includes (Raw JSON strings)
     std.debug.print("\n--- Testing fetchAs() with multiple includes (Raw JSON) ---\n", .{});
     const UserFullJson = struct {
+        id: []const u8,
         name: []const u8,
         posts: ?[]const u8,
         comments: ?[]const u8,
@@ -286,7 +296,7 @@ pub fn main() !void {
     var query_full_as = models.Users.query();
     defer query_full_as.deinit();
     _ = query_full_as
-        .select(&.{.name})
+        .select(&.{ .name, .id })
         .include(.{ .posts = .{ .model_name = .posts } })
         .include(.{ .comments = .{ .model_name = .comments } });
 

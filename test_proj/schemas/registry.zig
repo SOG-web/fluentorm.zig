@@ -21,9 +21,9 @@ pub const TableInfo = struct {
 
 /// Tables grouped by table_name with their schema builders
 pub const tables = [_]TableInfo{
-    .{ .name = "uwsers", .builders = &[_]SchemaBuilder{
-        .{ .name = "uwsers", .builder_fn = @"01_us_schema".build },
-        .{ .name = "uwsers", .builder_fn = @"07_users_extra_schema".build },
+    .{ .name = "users", .builders = &[_]SchemaBuilder{
+        .{ .name = "users", .builder_fn = @"01_us_schema".build },
+        .{ .name = "users", .builder_fn = @"07_users_extra_schema".build },
     }},
     .{ .name = "posts", .builders = &[_]SchemaBuilder{
         .{ .name = "posts", .builder_fn = @"02_posts_schema".build },

@@ -14,8 +14,8 @@ const err = @import("../error.zig");
 const OrmError = err.OrmError;
 
 // Related models
-const Uwsers = @import("../uwsers/model.zig");
-const UwsersQuery = @import("../uwsers/query.zig");
+const Users = @import("../users/model.zig");
+const UsersQuery = @import("../users/query.zig");
 
 const Profiles = @This();
 
@@ -55,18 +55,18 @@ const Profiles = @This();
 
     pub fn getRelation(rel: RelationEnum) Relationship {
         return switch (rel) {
-            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .uwsers, .foreign_key = .{ .uwsers = .id }, .local_key = .{ .profiles = .user_id } },
+            .user => .{ .name = "user", .type = .belongsTo, .foreign_table = .users, .foreign_key = .{ .users = .id }, .local_key = .{ .profiles = .user_id } },
         };
     }
 
-    pub const UwsersIncludeClauseInput = struct {
+    pub const UsersIncludeClauseInput = struct {
         model_name: RelationEnum,
-        select: []const Uwsers.FieldEnum = &.{},
-        where: []const UwsersQuery.WhereClause = &.{},
+        select: []const Users.FieldEnum = &.{},
+        where: []const UsersQuery.WhereClause = &.{},
     };
 
     pub const IncludeClauseInput = union(RelationEnum) {
-        user: UwsersIncludeClauseInput,
+        user: UsersIncludeClauseInput,
     };
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
@@ -299,8 +299,8 @@ const Profiles = @This();
         };
     }
     // Relationship methods
-    /// Fetch the related Uwsers record for this Profiles
-    pub fn fetchUser(self: *const Profiles, db: Executor, allocator: std.mem.Allocator) err.Result(?Uwsers) {
-        return Uwsers.findById(db, allocator, self.user_id);
+    /// Fetch the related Users record for this Profiles
+    pub fn fetchUser(self: *const Profiles, db: Executor, allocator: std.mem.Allocator) err.Result(?Users) {
+        return Users.findById(db, allocator, self.user_id);
     }
 
