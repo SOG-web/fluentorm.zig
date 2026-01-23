@@ -1,4 +1,5 @@
 const pg = @import("pg");
+
 const err = @import("error.zig");
 
 /// Unified database executor - abstracts over Pool or Conn
@@ -47,10 +48,13 @@ pub const Executor = union(enum) {
     }
 
     /// Prepare a statement for later execution
+    /// Note: In pool mode, this acquires a connection that MUST be released manually
+    /// using executor.releaseConn(stmt.conn).
     pub fn prepare(self: Executor, sql: []const u8) !pg.Stmt {
         return switch (self) {
             .pool => |p| blk: {
                 const conn = try p.acquire();
+                errdefer p.release(conn);
                 break :blk try conn.prepare(sql);
             },
             .conn => |c| try c.prepare(sql),

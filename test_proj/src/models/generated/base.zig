@@ -2,16 +2,15 @@ const std = @import("std");
 
 const pg = @import("pg");
 
+const err = @import("error.zig");
+const OrmError = err.OrmError;
 const executor = @import("executor.zig");
 const Executor = executor.Executor;
 const QueryResult = executor.QueryResult;
 const RowResult = executor.RowResult;
 const ExecResult = executor.ExecResult;
-
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
 const Tables = @import("registry.zig").Tables;
-const err = @import("error.zig");
-const OrmError = err.OrmError;
 
 pub const Relationship = struct {
     name: []const u8,
@@ -83,10 +82,15 @@ pub fn BaseModel(comptime T: type) type {
                 \\    AND table_name = $1
                 \\)
             ;
-            var result = try db.query(sql, .{table_name});
-            result.drain() catch {};
-            defer result.deinit();
-            return false; // TODO: parse result
+            const result = db.rowWithErr(sql, .{table_name});
+            return switch (result) {
+                .ok => |maybe_row| {
+                    var row = maybe_row orelse return false;
+                    defer row.deinit() catch {};
+                    return row.get(bool, 0);
+                },
+                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            };
         }
 
         /// Find a record by ID
@@ -120,6 +124,11 @@ pub fn BaseModel(comptime T: type) type {
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
+
+                    // Drain the result set to ensure the connection is free for the next query
+                    // (especially important in transactions)
+                    result.drain() catch {};
+
                     if (item) |model| {
                         return .{ .ok = model };
                     }
@@ -168,15 +177,20 @@ pub fn BaseModel(comptime T: type) type {
                 .ok => |result| {
                     defer result.deinit();
                     var items = std.ArrayList(T){};
-                    errdefer items.deinit(allocator);
+                    errdefer {
+                        for (items.items) |item| item.deinit(allocator);
+                        items.deinit(allocator);
+                    }
 
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     while (true) {
                         const item = mapper.next() catch |e| {
+                            result.drain() catch {};
                             return .{ .err = OrmError.fromError(e) };
                         };
                         if (item) |model| {
                             items.append(allocator, model) catch |e| {
+                                result.drain() catch {};
                                 return .{ .err = OrmError.fromError(e) };
                             };
                         } else break;
@@ -344,17 +358,22 @@ pub fn BaseModel(comptime T: type) type {
 
             while (true) {
                 const row = result.next() catch |e| {
+                    result.drain() catch {};
                     return .{ .err = err.toOrmError(e, conn) };
                 };
                 if (row) |r| {
                     const id = r.get([]const u8, 0);
                     ids.append(allocator, allocator.dupe(u8, id) catch |e| {
+                        result.drain() catch {};
                         return .{ .err = OrmError.fromError(e) };
                     }) catch |e| {
+                        result.drain() catch {};
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
+
+            result.drain() catch {};
 
             return .{ .ok = ids.toOwnedSlice(allocator) catch |e| {
                 return .{ .err = OrmError.fromError(e) };
@@ -412,6 +431,10 @@ pub fn BaseModel(comptime T: type) type {
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
+
+                    // Drain the result set to ensure the connection is free for the next query
+                    result.drain() catch {};
+
                     if (item) |model| {
                         return .{ .ok = model };
                     }
@@ -499,6 +522,10 @@ pub fn BaseModel(comptime T: type) type {
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
+
+                    // Drain results
+                    result.drain() catch {};
+
                     if (item) |model| {
                         return .{ .ok = model };
                     }
@@ -593,6 +620,10 @@ pub fn BaseModel(comptime T: type) type {
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
+
+                    // Drain results
+                    result.drain() catch {};
+
                     if (item) |model| {
                         return .{ .ok = model };
                     }

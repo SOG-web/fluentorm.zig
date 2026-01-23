@@ -449,14 +449,14 @@ pub fn main() !void {
         var tx = try Transaction.begin(pool);
         defer tx.deinit();
 
-        const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
+        var tx_user = try models.Users.insertAndReturn(tx.executor(), allocator, models.Users.CreateInput{
             .name = "tx_rollback_user",
             .email = "tx_rollback@example.com",
             .password_hash = "hashed_password",
             .bid = null,
             .is_active = true,
         }).unwrap();
-        defer allocator.free(tx_user_id);
+        defer tx_user.deinit(allocator);
 
         // Rollback the transaction
         try tx.rollback();
@@ -474,6 +474,12 @@ pub fn main() !void {
     {
         var tx = try Transaction.begin(pool);
         defer tx.deinit();
+
+        // check exist
+        var verify_query = models.Users.query();
+        defer verify_query.deinit();
+        _ = verify_query.where(.{ .field = .name, .operator = .eq, .value = .{ .string = "tx_rollback_user" } });
+        _ = try verify_query.exists(db, .{}).unwrap();
 
         // Create user
         const tx_user_id = try models.Users.insert(tx.executor(), allocator, models.Users.CreateInput{
@@ -499,13 +505,13 @@ pub fn main() !void {
         const tx_post_hex = try pg.uuidToHex(&tx_post_id[0..16].*);
 
         // Create comment on the post
-        const tx_comment_id = try models.Comments.insert(tx.executor(), allocator, models.Comments.CreateInput{
+        var tx_comment = try models.Comments.insertAndReturn(tx.executor(), allocator, models.Comments.CreateInput{
             .post_id = &tx_post_hex,
             .user_id = &tx_user_hex,
             .content = "This comment is part of a transaction",
             .is_approved = true,
         }).unwrap();
-        defer allocator.free(tx_comment_id);
+        defer tx_comment.deinit(allocator);
 
         // Commit all operations
         try tx.commit();

@@ -2,11 +2,11 @@ const std = @import("std");
 
 const pg = @import("pg");
 
+const err = @import("error.zig");
+const OrmError = err.OrmError;
 const Executor = @import("executor.zig").Executor;
 const TableFieldsUnion = @import("registry.zig").TableFieldsUnion;
 const Tables = @import("registry.zig").Tables;
-const err = @import("error.zig");
-const OrmError = err.OrmError;
 
 pub const JoinClause = struct {
     base_field: TableFieldsUnion,
@@ -670,16 +670,21 @@ pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
             var mapper = result.mapper(R, .{ .allocator = allocator });
             while (true) {
                 const item = mapper.next() catch |e| {
+                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (item) |i| {
                     items.append(allocator, i) catch |e| {
+                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
+
+            result.drain() catch {};
+
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);
                 return .{ .err = OrmError.fromError(e) };
@@ -706,20 +711,26 @@ pub fn fetchWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.All
 
             while (true) {
                 const row = result.next() catch |e| {
+                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (row) |r| {
                     const item = R.fromRow(r, allocator) catch |e| {
+                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                     items.append(allocator, item) catch |e| {
+                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
+
+            result.drain() catch {};
+
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);
                 return .{ .err = OrmError.fromError(e) };
@@ -755,6 +766,7 @@ pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
             const item = mapper.next() catch |e| {
                 return .{ .err = OrmError.fromError(e) };
             };
+            result.drain() catch {};
             return .{ .ok = item };
         },
     }
@@ -777,6 +789,7 @@ pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.All
             const row = result.next() catch |e| {
                 return .{ .err = OrmError.fromError(e) };
             };
+            result.drain() catch {};
             if (row) |r| {
                 const item = R.fromRow(r, allocator) catch |e| {
                     return .{ .err = OrmError.fromError(e) };
@@ -788,23 +801,18 @@ pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.All
     }
 }
 
-pub fn firstRaw(self: anytype, db: Executor, args: anytype) !?pg.Result {
+pub fn firstRaw(self: anytype, db: Executor, args: anytype) !*pg.Result {
     self.limit_val = 1;
     const temp_allocator = self.arena.allocator();
     const sql = try self.buildSql(temp_allocator);
 
-    var result = try db.queryOpts(sql, args, .{
+    // In pool mode, we need to ensure the result releases the connection
+    const opts = pg.Conn.QueryOpts{
         .column_names = true,
-    });
-    defer result.deinit();
-    // Check if there's at least one row
-    if (try result.next()) |_| {
-        return try db.queryOpts(sql, args, .{
-            .column_names = true,
-        });
-    }
+        .release_conn = db == .pool,
+    };
 
-    return null;
+    return try db.queryOpts(sql, args, opts);
 }
 
 pub fn delete(self: anytype, db: Executor, args: anytype, Model: type) err.Result(void) {
@@ -976,21 +984,26 @@ pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: a
 
             while (true) {
                 const row = result.next() catch |e| {
+                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (row) |r| {
                     const val = r.get([]const u8, 0);
                     const dupe = allocator.dupe(u8, val) catch |e| {
+                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                     items.append(allocator, dupe) catch |e| {
+                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
+
+            result.drain() catch {};
 
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);
