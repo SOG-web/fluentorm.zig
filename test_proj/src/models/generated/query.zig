@@ -664,26 +664,23 @@ pub fn fetchAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
 
             var items = std.ArrayList(R){};
 
             var mapper = result.mapper(R, .{ .allocator = allocator });
             while (true) {
                 const item = mapper.next() catch |e| {
-                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (item) |i| {
                     items.append(allocator, i) catch |e| {
-                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
-
-            result.drain() catch {};
 
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);
@@ -706,30 +703,26 @@ pub fn fetchWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.All
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
 
             var items = std.ArrayList(R){};
 
             while (true) {
                 const row = result.next() catch |e| {
-                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (row) |r| {
                     const item = R.fromRow(r, allocator) catch |e| {
-                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                     items.append(allocator, item) catch |e| {
-                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
-
-            result.drain() catch {};
 
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);
@@ -762,11 +755,12 @@ pub fn firstAs(self: anytype, R: type, db: Executor, allocator: std.mem.Allocato
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
+
             var mapper = result.mapper(R, .{ .allocator = allocator });
             const item = mapper.next() catch |e| {
                 return .{ .err = OrmError.fromError(e) };
             };
-            result.drain() catch {};
             return .{ .ok = item };
         },
     }
@@ -786,10 +780,11 @@ pub fn firstWithRel(self: anytype, R: type, db: Executor, allocator: std.mem.All
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
+
             const row = result.next() catch |e| {
                 return .{ .err = OrmError.fromError(e) };
             };
-            result.drain() catch {};
             if (row) |r| {
                 const item = R.fromRow(r, allocator) catch |e| {
                     return .{ .err = OrmError.fromError(e) };
@@ -979,31 +974,27 @@ pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: a
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
 
             var items = std.ArrayList([]const u8){};
 
             while (true) {
                 const row = result.next() catch |e| {
-                    result.drain() catch {};
                     items.deinit(allocator);
                     return .{ .err = OrmError.fromError(e) };
                 };
                 if (row) |r| {
                     const val = r.get([]const u8, 0);
                     const dupe = allocator.dupe(u8, val) catch |e| {
-                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                     items.append(allocator, dupe) catch |e| {
-                        result.drain() catch {};
                         items.deinit(allocator);
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
-
-            result.drain() catch {};
 
             return .{ .ok = items.toOwnedSlice(allocator) catch |e| {
                 items.deinit(allocator);

@@ -4,120 +4,120 @@
 // To regenerate: zig run scripts/generate_model.zig -- users.zig
 
 const std = @import("std");
+
 const pg = @import("pg");
+
 const BaseModel = @import("../base.zig").BaseModel;
+const Relationship = @import("../base.zig").Relationship;
+const Comments = @import("../comments/model.zig");
+const err = @import("../error.zig");
+const OrmError = err.OrmError;
 const Executor = @import("../executor.zig").Executor;
+const Posts = @import("../posts/model.zig");
 const query = @import("../query.zig");
 const JoinClause = query.JoinClause;
 const WhereValue = query.WhereValue;
-const IncludeClauseInput = Model.IncludeClauseInput;
 const Operator = query.Operator;
 const WhereClauseType = query.WhereClauseType;
 const WhereClauseInternal = query.WhereClauseInternal;
 const InType = query.InType;
 const JoinType = query.JoinType;
 const AggregateType = query.AggregateType;
+const Transaction = @import("../transaction.zig").Transaction;
 const Model = @import("model.zig");
 const FieldEnum = Model.FieldEnum;
 const RelationEnum = Model.RelationEnum;
-const Transaction = @import("../transaction.zig").Transaction;
-const Relationship = @import("../base.zig").Relationship;
-const err = @import("../error.zig");
-const OrmError = err.OrmError;
+const IncludeClauseInput = Model.IncludeClauseInput;
 
 // Related models
-const Comments = @import("../comments/model.zig");
-const Posts = @import("../posts/model.zig");
-
 const Self = @This();
 
 // Fields
- arena: std.heap.ArenaAllocator,
- select_clauses: std.ArrayList([]const u8),
- where_clauses: std.ArrayList(WhereClauseInternal),
- order_clauses: std.ArrayList([]const u8),
- group_clauses: std.ArrayList([]const u8),
- having_clauses: std.ArrayList([]const u8),
- join_clauses: std.ArrayList(JoinClause),
- limit_val: ?u64 = null,
- offset_val: ?u64 = null,
- include_deleted: bool = false,
- distinct_enabled: bool = false,
- includes_clauses: std.ArrayList(Model.IncludeClauseInput),
- base_select_custom: bool = false,
- select_raw: bool = false,
- fill_base_select: bool = false,
- owns_arena: bool = true,
+arena: std.heap.ArenaAllocator,
+select_clauses: std.ArrayList([]const u8),
+where_clauses: std.ArrayList(WhereClauseInternal),
+order_clauses: std.ArrayList([]const u8),
+group_clauses: std.ArrayList([]const u8),
+having_clauses: std.ArrayList([]const u8),
+join_clauses: std.ArrayList(JoinClause),
+limit_val: ?u64 = null,
+offset_val: ?u64 = null,
+include_deleted: bool = false,
+distinct_enabled: bool = false,
+includes_clauses: std.ArrayList(Model.IncludeClauseInput),
+base_select_custom: bool = false,
+select_raw: bool = false,
+fill_base_select: bool = false,
+owns_arena: bool = true,
 
-  pub const WhereClause = struct {
-      where_type: WhereClauseType = .@"and",
-      field: FieldEnum,
-      operator: Operator,
-      value: ?WhereValue = null,
-   };
+pub const WhereClause = struct {
+    where_type: WhereClauseType = .@"and",
+    field: FieldEnum,
+    operator: Operator,
+    value: ?WhereValue = null,
+};
 
-
- pub const OrderByClause = struct {
-      field: FieldEnum,
-      direction: enum {
-         asc,
-         desc,
-      },
-     pub fn toSql(self: OrderByClause) []const u8 {
-         return switch (self.direction) {
+pub const OrderByClause = struct {
+    field: FieldEnum,
+    direction: enum {
+        asc,
+        desc,
+    },
+    pub fn toSql(self: OrderByClause) []const u8 {
+        return switch (self.direction) {
             .asc => "ASC",
             .desc => "DESC",
-         };
-      }
-   };
+        };
+    }
+};
 
-   pub const SelectField = []const FieldEnum;
- pub fn tablename(_: *Self) []const u8 {
+pub const SelectField = []const FieldEnum;
+pub fn tablename(_: *Self) []const u8 {
     return Model.tableName();
- }
+}
 
- /// Create a new query builder using page_allocator for its arena.
- pub fn init() Self {
+/// Create a new query builder using page_allocator for its arena.
+pub fn init() Self {
     return initWithAllocator(std.heap.page_allocator);
- }
+}
 
- /// Create a query builder with a custom backing allocator for its arena.
- pub fn initWithAllocator(backing_allocator: std.mem.Allocator) Self {
+/// Create a query builder with a custom backing allocator for its arena.
+pub fn initWithAllocator(backing_allocator: std.mem.Allocator) Self {
     return Self{
-       .arena = std.heap.ArenaAllocator.init(backing_allocator),
-       .select_clauses = std.ArrayList([]const u8){},
-       .where_clauses = std.ArrayList(WhereClauseInternal){},
-       .order_clauses = std.ArrayList([]const u8){},
-       .group_clauses = std.ArrayList([]const u8){},
-       .having_clauses = std.ArrayList([]const u8){},
-       .join_clauses = std.ArrayList(JoinClause){},
-       .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
-       .base_select_custom = false,
-       .select_raw = false,
-       .fill_base_select = false,
+        .arena = std.heap.ArenaAllocator.init(backing_allocator),
+        .select_clauses = std.ArrayList([]const u8){},
+        .where_clauses = std.ArrayList(WhereClauseInternal){},
+        .order_clauses = std.ArrayList([]const u8){},
+        .group_clauses = std.ArrayList([]const u8){},
+        .having_clauses = std.ArrayList([]const u8){},
+        .join_clauses = std.ArrayList(JoinClause){},
+        .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
+        .base_select_custom = false,
+        .select_raw = false,
+        .fill_base_select = false,
     };
- }
+}
 
- /// Create a query builder using an existing ArenaAllocator.
- /// Ideal for http.zig request handlers where the arena is managed externally.
- pub fn initWithArena(arena_allocator: *std.heap.ArenaAllocator) Self {
+/// Create a query builder using an existing ArenaAllocator.
+/// Ideal for http.zig request handlers where the arena is managed externally.
+pub fn initWithArena(arena_allocator: *std.heap.ArenaAllocator) Self {
     return Self{
-       .arena = arena_allocator.*,
-       .owns_arena = false,
-       .select_clauses = std.ArrayList([]const u8){},
-       .where_clauses = std.ArrayList(WhereClauseInternal){},
-       .order_clauses = std.ArrayList([]const u8){},
-       .group_clauses = std.ArrayList([]const u8){},
-       .having_clauses = std.ArrayList([]const u8){},
-       .join_clauses = std.ArrayList(JoinClause){},
-       .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
-       .base_select_custom = false,
-       .select_raw = false,
-       .fill_base_select = false,
+        .arena = arena_allocator.*,
+        .owns_arena = false,
+        .select_clauses = std.ArrayList([]const u8){},
+        .where_clauses = std.ArrayList(WhereClauseInternal){},
+        .order_clauses = std.ArrayList([]const u8){},
+        .group_clauses = std.ArrayList([]const u8){},
+        .having_clauses = std.ArrayList([]const u8){},
+        .join_clauses = std.ArrayList(JoinClause){},
+        .includes_clauses = std.ArrayList(Model.IncludeClauseInput){},
+        .base_select_custom = false,
+        .select_raw = false,
+        .fill_base_select = false,
     };
- }
+}
 
- pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self) void {
     self.where_clauses.deinit(self.arena.allocator());
     self.select_clauses.deinit(self.arena.allocator());
     self.order_clauses.deinit(self.arena.allocator());
@@ -128,9 +128,9 @@ const Self = @This();
     if (self.owns_arena) {
         self.arena.deinit();
     }
- }
+}
 
- pub fn reset(self: *Self) void {
+pub fn reset(self: *Self) void {
     self.select_clauses.clearAndFree(self.arena.allocator());
     self.where_clauses.clearAndFree(self.arena.allocator());
     self.order_clauses.clearAndFree(self.arena.allocator());
@@ -145,69 +145,70 @@ const Self = @This();
     self.base_select_custom = false;
     self.select_raw = false;
     self.fill_base_select = false;
- }
-    pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
-        const rel_tag = std.meta.activeTag(rel);
-        const relation = Model.getRelation(rel_tag);
-        var clause = JoinClause{
-            .join_type = JoinType.left,
-           .join_table = relation.foreign_table,
-           .join_field = relation.foreign_key,
-           .join_operator = .eq,
-          .base_field = relation.local_key,
-           .predicates = &.{},
-           .select = &.{"*"},
-       };
+}
+pub fn buildIncludeSql(self: *Self, rel: IncludeClauseInput) !JoinClause {
+    const rel_tag = std.meta.activeTag(rel);
+    const relation = Model.getRelation(rel_tag);
+    var clause = JoinClause{
+        .join_type = JoinType.left,
+        .join_table = relation.foreign_table,
+        .join_field = relation.foreign_key,
+        .join_operator = .eq,
+        .base_field = relation.local_key,
+        .predicates = &.{},
+        .select = &.{"*"},
+    };
 
-        switch (rel) {            .posts => |r| {
-                // Construct the where clause from rel into an sql string
-                if (r.where.len > 0) {
-                    clause.predicates = try self.arena.allocator().alloc(query.PredicateClause, r.where.len);
-                    for (r.where, 0..) |cl, i| {
-                        const str = try query.buildIncludeWhere(self, cl, @tagName(relation.foreign_table), cl.value);
-                        clause.predicates[i] = .{
-                            .where_type = cl.where_type,
-                            .sql = str,
-                        };
-                    }
+    switch (rel) {
+        .posts => |r| {
+            // Construct the where clause from rel into an sql string
+            if (r.where.len > 0) {
+                clause.predicates = try self.arena.allocator().alloc(query.PredicateClause, r.where.len);
+                for (r.where, 0..) |cl, i| {
+                    const str = try query.buildIncludeWhere(self, cl, @tagName(relation.foreign_table), cl.value);
+                    clause.predicates[i] = .{
+                        .where_type = cl.where_type,
+                        .sql = str,
+                    };
                 }
+            }
 
-                // Construct select clause
-                if (r.select.len > 0) {
-                    const selects = try self.arena.allocator().alloc([]const u8, r.select.len);
-                    for (r.select, 0..) |field, i| {
-                        selects[i] = @tagName(field);
-                    }
-                    clause.select = selects;
-                }                clause.is_many = true;
-
-            },
-            .comments => |r| {
-                // Construct the where clause from rel into an sql string
-                if (r.where.len > 0) {
-                    clause.predicates = try self.arena.allocator().alloc(query.PredicateClause, r.where.len);
-                    for (r.where, 0..) |cl, i| {
-                        const str = try query.buildIncludeWhere(self, cl, @tagName(relation.foreign_table), cl.value);
-                        clause.predicates[i] = .{
-                            .where_type = cl.where_type,
-                            .sql = str,
-                        };
-                    }
+            // Construct select clause
+            if (r.select.len > 0) {
+                const selects = try self.arena.allocator().alloc([]const u8, r.select.len);
+                for (r.select, 0..) |field, i| {
+                    selects[i] = @tagName(field);
                 }
+                clause.select = selects;
+            }
+            clause.is_many = true;
+        },
+        .comments => |r| {
+            // Construct the where clause from rel into an sql string
+            if (r.where.len > 0) {
+                clause.predicates = try self.arena.allocator().alloc(query.PredicateClause, r.where.len);
+                for (r.where, 0..) |cl, i| {
+                    const str = try query.buildIncludeWhere(self, cl, @tagName(relation.foreign_table), cl.value);
+                    clause.predicates[i] = .{
+                        .where_type = cl.where_type,
+                        .sql = str,
+                    };
+                }
+            }
 
-                // Construct select clause
-                if (r.select.len > 0) {
-                    const selects = try self.arena.allocator().alloc([]const u8, r.select.len);
-                    for (r.select, 0..) |field, i| {
-                        selects[i] = @tagName(field);
-                    }
-                    clause.select = selects;
-                }                clause.is_many = true;
-
-            },
-        }
-        return clause;
+            // Construct select clause
+            if (r.select.len > 0) {
+                const selects = try self.arena.allocator().alloc([]const u8, r.select.len);
+                for (r.select, 0..) |field, i| {
+                    selects[i] = @tagName(field);
+                }
+                clause.select = selects;
+            }
+            clause.is_many = true;
+        },
     }
+    return clause;
+}
 /// Add a SELECT clause
 ///
 /// Example:
@@ -418,7 +419,6 @@ pub fn join(self: *Self, comptime join_clause: JoinClause) *Self {
     return self;
 }
 
-
 /// Add GROUP BY clause
 ///
 /// Example:
@@ -601,19 +601,31 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
                         const next_is_or = (i < join_clause.predicates.len - 1 and join_clause.predicates[i + 1].where_type == .@"or");
                         if (i == 0) {
                             try sql.appendSlice(allocator, " AND ");
-                            if (next_is_or) { try sql.appendSlice(allocator, "("); in_or_group = true; }
+                            if (next_is_or) {
+                                try sql.appendSlice(allocator, "(");
+                                in_or_group = true;
+                            }
                             try sql.appendSlice(allocator, predicate.sql);
                             continue;
                         }
                         if (predicate.where_type == .@"and") {
-                            if (in_or_group) { try sql.appendSlice(allocator, ")"); in_or_group = false; }
+                            if (in_or_group) {
+                                try sql.appendSlice(allocator, ")");
+                                in_or_group = false;
+                            }
                             try sql.appendSlice(allocator, " AND ");
-                            if (next_is_or) { try sql.appendSlice(allocator, "("); in_or_group = true; }
+                            if (next_is_or) {
+                                try sql.appendSlice(allocator, "(");
+                                in_or_group = true;
+                            }
                             try sql.appendSlice(allocator, predicate.sql);
                         } else {
                             try sql.appendSlice(allocator, " OR ");
                             try sql.appendSlice(allocator, predicate.sql);
-                            if (!next_is_or and in_or_group) { try sql.appendSlice(allocator, ")"); in_or_group = false; }
+                            if (!next_is_or and in_or_group) {
+                                try sql.appendSlice(allocator, ")");
+                                in_or_group = false;
+                            }
                         }
                     }
                     if (in_or_group) try sql.appendSlice(allocator, ")");
@@ -655,7 +667,7 @@ pub fn buildSql(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
             }
         }
     } else {
-         if (!has_select_clause) {
+        if (!has_select_clause) {
             try sql.writer(allocator).print("{s}.*", .{table_name});
         }
     }
@@ -871,6 +883,7 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            // defer result.drain() catch {};
 
             var items = std.ArrayList(Model){};
 
@@ -898,7 +911,6 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
         },
     }
 }
-
 
 /// Execute query and return list of items mapped to a custom result type.
 /// Use this when you have custom selects, aggregates, or need a difFieldEnumrent shape than the model.
@@ -956,7 +968,7 @@ pub fn fetchRaw(self: *Self, db: Executor, args: anytype) !pg.Result {
 /// // results[0].posts is now parsed from JSONB!
 /// ```
 pub fn fetchWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result([]R) {
-     comptime {
+    comptime {
         if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
         }
@@ -1035,7 +1047,7 @@ pub fn firstAs(self: *Self, comptime R: type, db: Executor, allocator: std.mem.A
 /// // user.?.posts is now parsed from JSONB!
 /// ```
 pub fn firstWithRel(self: *Self, comptime R: type, db: Executor, allocator: std.mem.Allocator, args: anytype) err.Result(?R) {
-     comptime {
+    comptime {
         if (!@hasDecl(R, "fromRow")) {
             @compileError("R must have fromRow method");
         }

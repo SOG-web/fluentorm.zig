@@ -120,14 +120,12 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| return .{ .err = e },
                 .ok => |result| {
                     defer result.deinit();
+                    defer result.drain() catch {};
+
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
-
-                    // Drain the result set to ensure the connection is free for the next query
-                    // (especially important in transactions)
-                    result.drain() catch {};
 
                     if (item) |model| {
                         return .{ .ok = model };
@@ -176,6 +174,8 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| return .{ .err = e },
                 .ok => |result| {
                     defer result.deinit();
+                    defer result.drain() catch {};
+
                     var items = std.ArrayList(T){};
                     errdefer {
                         for (items.items) |item| item.deinit(allocator);
@@ -185,12 +185,10 @@ pub fn BaseModel(comptime T: type) type {
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     while (true) {
                         const item = mapper.next() catch |e| {
-                            result.drain() catch {};
                             return .{ .err = OrmError.fromError(e) };
                         };
                         if (item) |model| {
                             items.append(allocator, model) catch |e| {
-                                result.drain() catch {};
                                 return .{ .err = OrmError.fromError(e) };
                             };
                         } else break;
@@ -349,7 +347,7 @@ pub fn BaseModel(comptime T: type) type {
                 return .{ .err = err.toOrmError(e, conn) };
             };
             defer result.deinit();
-
+            defer result.drain() catch {};
             var ids = std.ArrayList([]const u8){};
             errdefer {
                 for (ids.items) |id| allocator.free(id);
@@ -358,22 +356,17 @@ pub fn BaseModel(comptime T: type) type {
 
             while (true) {
                 const row = result.next() catch |e| {
-                    result.drain() catch {};
                     return .{ .err = err.toOrmError(e, conn) };
                 };
                 if (row) |r| {
                     const id = r.get([]const u8, 0);
                     ids.append(allocator, allocator.dupe(u8, id) catch |e| {
-                        result.drain() catch {};
                         return .{ .err = OrmError.fromError(e) };
                     }) catch |e| {
-                        result.drain() catch {};
                         return .{ .err = OrmError.fromError(e) };
                     };
                 } else break;
             }
-
-            result.drain() catch {};
 
             return .{ .ok = ids.toOwnedSlice(allocator) catch |e| {
                 return .{ .err = OrmError.fromError(e) };
@@ -427,13 +420,12 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| return .{ .err = e },
                 .ok => |result| {
                     defer result.deinit();
+                    defer result.drain() catch {};
+
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
-
-                    // Drain the result set to ensure the connection is free for the next query
-                    result.drain() catch {};
 
                     if (item) |model| {
                         return .{ .ok = model };
@@ -518,13 +510,12 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| return .{ .err = e },
                 .ok => |result| {
                     defer result.deinit();
+                    defer result.drain() catch {};
+
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
-
-                    // Drain results
-                    result.drain() catch {};
 
                     if (item) |model| {
                         return .{ .ok = model };
@@ -616,13 +607,12 @@ pub fn BaseModel(comptime T: type) type {
                 .err => |e| return .{ .err = e },
                 .ok => |result| {
                     defer result.deinit();
+                    defer result.drain() catch {};
+
                     var mapper = result.mapper(T, .{ .allocator = allocator });
                     const item = mapper.next() catch |e| {
                         return .{ .err = OrmError.fromError(e) };
                     };
-
-                    // Drain results
-                    result.drain() catch {};
 
                     if (item) |model| {
                         return .{ .ok = model };
