@@ -609,7 +609,17 @@ pub fn main() !void {
         var tx_query = models.Users.query();
         defer tx_query.deinit();
         _ = tx_query.where(.{ .field = .bid, .operator = .eq, .value = .{ .string = "QUERY_USER" } });
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.fetch(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.fetch(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.fetch(tx.executor(), arena_allocator, .{}).unwrap();
         const tx_users = try tx_query.fetch(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
+        _ = try tx_query.first(tx.executor(), arena_allocator, .{}).unwrap();
         std.debug.print("Users in transaction query: {d} (Expected 2)\n", .{tx_users.len});
 
         // Commit

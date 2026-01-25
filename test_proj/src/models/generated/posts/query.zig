@@ -870,7 +870,7 @@ pub fn fetch(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
-            defer result.drain() catch {};
+           // defer result.drain() catch {};
 
             var items = std.ArrayList(Model){};
 
@@ -987,6 +987,7 @@ pub fn first(self: *Self, db: Executor, allocator: std.mem.Allocator, args: anyt
         .err => |e| return .{ .err = e },
         .ok => |result| {
             defer result.deinit();
+            defer result.drain() catch {};
             const row = result.next() catch |e| {
                 return .{ .err = OrmError.fromError(e) };
             };
