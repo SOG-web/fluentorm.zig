@@ -54,6 +54,23 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(migrate_exe);
 
+    // Database introspection (db pull) executable
+    const db_pull_exe = b.addExecutable(.{
+        .name = "fluent-db-pull",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/db_pull.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "fluentorm", .module = fluentzig },
+                .{ .name = "pg", .module = pg.module("pg") },
+                .{ .name = "dotenv", .module = dotenv.module("dotenv") },
+            },
+        }),
+    });
+
+    b.installArtifact(db_pull_exe);
+
     // Migration directory option
     const migrations_dir = b.option([]const u8, "migrations-dir", "Directory containing migration files") orelse "migrations";
 
@@ -84,6 +101,19 @@ pub fn build(b: *std.Build) void {
 
     const migrate_step = b.step("migrate", "Run database migrations");
     migrate_step.dependOn(&migrate_cmd.step);
+
+    // DB Pull step
+    const db_pull_cmd = b.addRunArtifact(db_pull_exe);
+    db_pull_cmd.step.dependOn(b.getInstallStep());
+
+    db_pull_cmd.addArgs(&.{ "--env-file", env_file });
+
+    if (b.args) |args| {
+        db_pull_cmd.addArgs(args);
+    }
+
+    const db_pull_step = b.step("db-pull", "Introspect database and generate schema files");
+    db_pull_step.dependOn(&db_pull_cmd.step);
 
     // Test step
     const lib_tests = b.addTest(.{

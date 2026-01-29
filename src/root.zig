@@ -6,6 +6,9 @@ pub const Result = err.Result;
 pub const toOrmError = err.toOrmError;
 pub const logError = err.logError;
 
+// Database introspection
+pub const introspection = @import("introspection/root.zig");
+
 // Executor and result types
 const executor = @import("executor.zig");
 pub const Executor = executor.Executor;
