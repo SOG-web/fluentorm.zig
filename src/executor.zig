@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const pg = @import("pg");
 
 const err = @import("error.zig");
@@ -134,7 +136,11 @@ pub const Executor = union(enum) {
 
         const result = conn.queryOpts(sql, args, opts) catch |e| {
             const orm_err = err.toOrmError(e, conn);
-            self.releaseConn(conn);
+            // If we set release_conn = true, pg.zig handles the release on error.
+            // Double-releasing back to the pool causes a panic.
+            if (self != .pool) {
+                self.releaseConn(conn);
+            }
             return .{ .err = orm_err };
         };
 
@@ -159,7 +165,11 @@ pub const Executor = union(enum) {
 
         const result = conn.rowOpts(sql, args, opts) catch |e| {
             const orm_err = err.toOrmError(e, conn);
-            self.releaseConn(conn);
+            // If we set release_conn = true, pg.zig handles the release on error.
+            // Double-releasing back to the pool causes a panic.
+            if (self != .pool) {
+                self.releaseConn(conn);
+            }
             return .{ .err = orm_err };
         };
 
@@ -195,7 +205,10 @@ pub const QueryResult = union(enum) {
     pub fn unwrap(self: QueryResult) !*pg.Result {
         return switch (self) {
             .ok => |r| r,
-            .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            .err => |e| {
+                std.debug.print("\n db error {s} \n", .{e.message});
+                return if (e.err) |underlying| underlying else error.OrmError;
+            },
         };
     }
 
@@ -219,14 +232,20 @@ pub const RowResult = union(enum) {
     pub fn unwrap(self: RowResult) !?pg.QueryRow {
         return switch (self) {
             .ok => |r| r,
-            .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            .err => |e| {
+                std.debug.print("\n db error {s} \n", .{e.message});
+                return if (e.err) |underlying| underlying else error.OrmError;
+            },
         };
     }
 
     pub fn getErr(self: RowResult) ?err.OrmError {
         return switch (self) {
             .ok => null,
-            .err => |e| e,
+            .err => |e| {
+                std.debug.print("\n db error {s} \n", .{e.message});
+                return e;
+            },
         };
     }
 };
@@ -243,14 +262,20 @@ pub const ExecResult = union(enum) {
     pub fn unwrap(self: ExecResult) !?i64 {
         return switch (self) {
             .ok => |r| r,
-            .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            .err => |e| {
+                std.debug.print("\n db error {s} \n", .{e.message});
+                return if (e.err) |underlying| underlying else error.OrmError;
+            },
         };
     }
 
     pub fn getErr(self: ExecResult) ?err.OrmError {
         return switch (self) {
             .ok => null,
-            .err => |e| e,
+            .err => |e| {
+                std.debug.print("\n db error {s} \n", .{e.message});
+                return e;
+            },
         };
     }
 };

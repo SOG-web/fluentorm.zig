@@ -1,147 +1,32 @@
 // Schema definition types for the model generator
+// Re-exports centralized types and provides schema-specific extensions
+
 const std = @import("std");
+const types = @import("types.zig");
 
-pub const AutoGenerateType = enum {
-    none,
-    uuid,
-    timestamp,
-    increments,
-};
+// Re-export all centralized types for backward compatibility
+pub const FieldType = types.FieldType;
+pub const AutoGenerateType = types.AutoGenerateType;
+pub const ReferentialAction = types.ReferentialAction;
+pub const OnDeleteAction = types.OnDeleteAction;
+pub const OnUpdateAction = types.OnUpdateAction;
+pub const RelationshipType = types.RelationshipType;
+pub const Relationship = types.Relationship;
+pub const Field = types.Field;
+pub const Index = types.Index;
 
-pub const FieldType = enum {
-    uuid,
-    uuid_optional,
-    text,
-    text_optional,
-    bool,
-    bool_optional,
-    i16,
-    i16_optional,
-    i32,
-    i32_optional,
-    i64,
-    i64_optional,
-    f32,
-    f32_optional,
-    f64,
-    f64_optional,
-    timestamp,
-    timestamp_optional,
-    json,
-    json_optional,
-    jsonb,
-    jsonb_optional,
-    binary,
-    binary_optional,
+// Legacy type aliases for full backward compatibility
+pub const type_info_table = types.type_info_table;
 
-    pub fn toZigType(self: FieldType) []const u8 {
-        return switch (self) {
-            .uuid => "[]const u8",
-            .uuid_optional => "?[]const u8",
-            .text => "[]const u8",
-            .text_optional => "?[]const u8",
-            .bool => "bool",
-            .bool_optional => "?bool",
-            .i16 => "i16",
-            .i16_optional => "?i16",
-            .i32 => "i32",
-            .i32_optional => "?i32",
-            .i64 => "i64",
-            .i64_optional => "?i64",
-            .f32 => "f32",
-            .f32_optional => "?f32",
-            .f64 => "f64",
-            .f64_optional => "?f64",
-            .timestamp => "i64",
-            .timestamp_optional => "?i64",
-            .json => "[]const u8",
-            .json_optional => "?[]const u8",
-            .jsonb => "[]const u8",
-            .jsonb_optional => "?[]const u8",
-            .binary => "[]const u8",
-            .binary_optional => "?[]const u8",
-        };
-    }
-
-    pub fn toPgType(self: FieldType) []const u8 {
-        return switch (self) {
-            .uuid => "UUID",
-            .uuid_optional => "UUID",
-            .text => "TEXT",
-            .text_optional => "TEXT",
-            .bool => "BOOLEAN",
-            .bool_optional => "BOOLEAN",
-            .i16 => "SMALLINT",
-            .i16_optional => "SMALLINT",
-            .i32 => "INT",
-            .i32_optional => "INT",
-            .i64 => "BIGINT",
-            .i64_optional => "BIGINT",
-            .f32 => "float4",
-            .f32_optional => "float4",
-            .f64 => "numeric",
-            .f64_optional => "numeric",
-            .timestamp => "TIMESTAMP",
-            .timestamp_optional => "TIMESTAMP",
-            .json => "JSON",
-            .json_optional => "JSON",
-            .jsonb => "JSONB",
-            .jsonb_optional => "JSONB",
-            .binary => "bytea",
-            .binary_optional => "bytea",
-        };
-    }
-
-    pub fn isOptional(self: FieldType) bool {
-        return switch (self) {
-            .uuid_optional,
-            .text_optional,
-            .bool_optional,
-            .i16_optional,
-            .i32_optional,
-            .i64_optional,
-            .f32_optional,
-            .f64_optional,
-            .timestamp_optional,
-            .json_optional,
-            .jsonb_optional,
-            .binary_optional,
-            => true,
-            else => false,
-        };
-    }
-
-    pub fn shouldQuoteDefault(self: FieldType, default_value: []const u8) bool {
-        // Booleans should not be quoted
-        if (self == .bool or self == .bool_optional) return false;
-
-        // Numbers should not be quoted
-        switch (self) {
-            .i16, .i16_optional, .i32, .i32_optional, .i64, .i64_optional, .f32, .f32_optional, .f64, .f64_optional => return false,
-            else => {},
-        }
-
-        // SQL functions or special values
-        if (std.mem.eql(u8, default_value, "true") or std.mem.eql(u8, default_value, "false")) return false;
-        if (std.mem.eql(u8, default_value, "null") or std.mem.eql(u8, default_value, "NULL")) return false;
-        if (std.mem.eql(u8, default_value, "CURRENT_TIMESTAMP")) return false;
-        if (std.mem.eql(u8, default_value, "NOW()")) return false;
-
-        // Function calls: something()
-        if (std.mem.indexOf(u8, default_value, "(") != null and std.mem.endsWith(u8, default_value, ")")) return false;
-
-        // Everything else likely needs quotes
-        return true;
-    }
-};
-
+/// Input mode for field creation
 pub const InputMode = enum {
     required, // Must be in CreateInput
     optional, // Optional in CreateInput
     excluded, // Not in CreateInput (auto-generated)
 };
 
-pub const Field = struct {
+/// Schema field with input mode extensions
+pub const SchemaField = struct {
     name: []const u8,
     type: FieldType,
 
@@ -162,8 +47,27 @@ pub const Field = struct {
     default_value: ?[]const u8 = null,
     auto_generated: bool = false,
     auto_generate_type: AutoGenerateType = .none,
+
+    /// Convert to base Field type
+    pub fn toField(self: SchemaField) Field {
+        return .{
+            .name = self.name,
+            .field_type = self.type,
+            .primary_key = self.primary_key,
+            .nullable = !self.not_null,
+            .unique = self.unique,
+            .default_value = self.default_value,
+            .references_table = null,
+            .references_column = null,
+            .auto_generated = self.auto_generated,
+            .auto_generate_type = self.auto_generate_type,
+            .redacted = self.redacted,
+            .index = false,
+        };
+    }
 };
 
+/// Schema alteration definition
 pub const Alter = struct {
     name: []const u8,
     type: ?FieldType = null,
@@ -186,63 +90,11 @@ pub const Alter = struct {
     auto_generate_type: ?AutoGenerateType = null,
 };
 
-pub const Index = struct {
+/// Legacy Index definition for schema (kept for backward compatibility)
+pub const SchemaIndex = struct {
     name: []const u8,
     columns: []const []const u8,
     unique: bool = false,
-};
-
-pub const RelationshipType = enum {
-    many_to_one, // This table has foreign key to another table (e.g., Post -> User)
-    one_to_many, // Another table has foreign key to this table (e.g., User -> Posts)
-    one_to_one, // One-to-one relationship
-    many_to_many, // Many-to-many through junction table
-};
-
-pub const OnDeleteAction = enum {
-    cascade,
-    set_null,
-    set_default,
-    restrict,
-    no_action,
-
-    pub fn toSQL(self: OnDeleteAction) []const u8 {
-        return switch (self) {
-            .cascade => "CASCADE",
-            .set_null => "SET NULL",
-            .set_default => "SET DEFAULT",
-            .restrict => "RESTRICT",
-            .no_action => "NO ACTION",
-        };
-    }
-};
-
-pub const OnUpdateAction = enum {
-    cascade,
-    set_null,
-    set_default,
-    restrict,
-    no_action,
-
-    pub fn toSQL(self: OnUpdateAction) []const u8 {
-        return switch (self) {
-            .cascade => "CASCADE",
-            .set_null => "SET NULL",
-            .set_default => "SET DEFAULT",
-            .restrict => "RESTRICT",
-            .no_action => "NO ACTION",
-        };
-    }
-};
-
-pub const Relationship = struct {
-    name: []const u8,
-    column: []const u8,
-    references_table: []const u8,
-    references_column: []const u8,
-    relationship_type: RelationshipType = .many_to_one,
-    on_delete: OnDeleteAction = .no_action,
-    on_update: OnUpdateAction = .no_action,
 };
 
 /// HasMany relationship definition for one-to-many relationships defined in the parent table.
@@ -255,14 +107,15 @@ pub const HasManyRelationship = struct {
     local_column: []const u8 = "id", // e.g., "id" (usually the PK of this table)
 };
 
+/// Complete schema definition for a table
 pub const Schema = struct {
     table_name: []const u8,
     struct_name: []const u8,
-    fields: []const Field,
-    indexes: []const Index,
+    fields: []const SchemaField,
+    indexes: []const SchemaIndex,
     relationships: []const Relationship,
 
-    pub fn getCreateInputFields(self: Schema) []const Field {
+    pub fn getCreateInputFields(self: Schema) []const SchemaField {
         var count: usize = 0;
         for (self.fields) |field| {
             if (field.create_input != .excluded) {
@@ -270,7 +123,7 @@ pub const Schema = struct {
             }
         }
 
-        var result = std.heap.page_allocator.alloc(Field, count) catch unreachable;
+        var result = std.heap.page_allocator.alloc(SchemaField, count) catch unreachable;
         var i: usize = 0;
         for (self.fields) |field| {
             if (field.create_input != .excluded) {
@@ -281,7 +134,7 @@ pub const Schema = struct {
         return result;
     }
 
-    pub fn getUpdateInputFields(self: Schema) []const Field {
+    pub fn getUpdateInputFields(self: Schema) []const SchemaField {
         var count: usize = 0;
         for (self.fields) |field| {
             if (field.update_input) {
@@ -289,7 +142,7 @@ pub const Schema = struct {
             }
         }
 
-        var result = std.heap.page_allocator.alloc(Field, count) catch unreachable;
+        var result = std.heap.page_allocator.alloc(SchemaField, count) catch unreachable;
         var i: usize = 0;
         for (self.fields) |field| {
             if (field.update_input) {

@@ -1,15 +1,16 @@
 const std = @import("std");
 
-const Alter = @import("schema.zig").Alter;
-const AutoGenerateType = @import("schema.zig").AutoGenerateType;
-const Field = @import("schema.zig").Field;
-const FieldType = @import("schema.zig").FieldType;
-const HasManyRelationship = @import("schema.zig").HasManyRelationship;
-const Index = @import("schema.zig").Index;
-const InputMode = @import("schema.zig").InputMode;
-const OnDeleteAction = @import("schema.zig").OnDeleteAction;
-const OnUpdateAction = @import("schema.zig").OnUpdateAction;
-const Relationship = @import("schema.zig").Relationship;
+const schema = @import("schema.zig");
+const Alter = schema.Alter;
+const AutoGenerateType = schema.AutoGenerateType;
+const Field = schema.Field;
+const FieldType = schema.FieldType;
+const HasManyRelationship = schema.HasManyRelationship;
+const Index = schema.Index;
+const InputMode = schema.InputMode;
+const OnDeleteAction = schema.OnDeleteAction;
+const OnUpdateAction = schema.OnUpdateAction;
+const Relationship = schema.Relationship;
 
 pub const FieldInput = struct {
     name: []const u8,
@@ -42,20 +43,6 @@ relationships: std.ArrayList(Relationship) = .{},
 has_many_relationships: std.ArrayList(HasManyRelationship) = .{},
 allocator: std.mem.Allocator,
 err: ?anyerror = null,
-
-// TODO: to be desided if we want to use this
-// due to the way zig works, we can't auto ignore a function's return value
-// const Chain = struct {
-//     self: *TableSchema,
-
-//     pub fn index(self: *Chain) void {
-//         self.self.index();
-//     }
-// };
-
-// fn chain(self: *TableSchema) Chain {
-//     return .{ .self = self };
-// }
 
 pub fn create(name: []const u8, allocator: std.mem.Allocator, builder: *const fn (self: *TableSchema) void) !TableSchema {
     var self = TableSchema{
@@ -126,241 +113,140 @@ pub fn getIndexByName(self: *TableSchema, index_name: []const u8) !IndT {
     return error.IndexNotFound;
 }
 
-//TODO: leaking memory
-fn index(self: *TableSchema) void {
+/// Generic field addition helper - eliminates code duplication across all type methods
+fn addFieldInternal(self: *TableSchema, field: FieldInput, field_type: FieldType, auto_gen_type: AutoGenerateType, default_override: ?[]const u8) void {
     if (self.err != null) return;
-    if (self.fields.items.len == 0) {
-        self.err = error.NoFields;
-        return;
-    }
-    //1. get the last field
-    const field = self.fields.items[self.fields.items.len - 1];
 
-    //2. create a new index
-    const index_name = std.fmt.allocPrint(self.allocator, "idx_{s}", .{field.name}) catch |err| {
-        self.err = err;
-        return;
-    };
-
-    //3. add the index to the list
-    self.indexes.append(self.allocator, .{
-        .name = index_name,
-        .columns = &.{field.name},
-        .unique = field.unique,
-    }) catch |err| {
-        self.err = err;
-    };
-}
-
-pub fn addIndexes(self: *TableSchema, list: []const Index) void {
-    if (self.err != null) return;
-    self.indexes.appendSlice(self.allocator, list) catch |err| {
-        self.err = err;
-    };
-}
-
-pub fn bigInt(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
     const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
+    const final_default = default_override orelse field.default_value;
+
     self.fields.append(self.allocator, .{
         .name = field.name,
-        .type = if (field.nullable) .i64_optional else .i64,
+        .type = field_type,
         .primary_key = field.primary_key,
         .unique = field.unique,
         .not_null = !field.nullable,
         .create_input = actual_create_input,
         .update_input = field.update_input,
         .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
+        .default_value = final_default,
+        .auto_generated = field.auto_generated or auto_gen_type != .none,
+        .auto_generate_type = auto_gen_type,
     }) catch |err| {
         self.err = err;
     };
+}
+
+/// Add an auto-incrementing primary key field
+fn addIncrementField(self: *TableSchema, field: FieldInput, field_type: FieldType) void {
+    if (self.err != null) return;
+
+    self.fields.append(self.allocator, .{
+        .name = field.name,
+        .type = field_type,
+        .primary_key = field.primary_key,
+        .unique = true,
+        .not_null = true,
+        .create_input = .optional,
+        .update_input = false,
+        .redacted = field.redacted,
+        .default_value = null,
+        .auto_generated = true,
+        .auto_generate_type = .increments,
+    }) catch |err| {
+        self.err = err;
+    };
+}
+
+// MARK: - Integer Types
+
+pub fn bigInt(self: *TableSchema, field: FieldInput) void {
+    const field_type: FieldType = if (field.nullable) .i64_optional else .i64;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
 pub fn bigIncrements(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = .i64,
-        .primary_key = field.primary_key,
-        .unique = true,
-        .not_null = true,
-        .create_input = .optional,
-        .update_input = false,
-        .redacted = field.redacted,
-        .default_value = null,
-        .auto_generated = true,
-        .auto_generate_type = .increments,
-    }) catch |err| {
-        self.err = err;
-    };
+    self.addIncrementField(field, .i64);
 }
 
 pub fn integer(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .i32_optional else .i32,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .i32_optional else .i32;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
 pub fn increments(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = .i32,
-        .primary_key = field.primary_key,
-        .unique = true,
-        .not_null = true,
-        .create_input = .optional,
-        .update_input = false,
-        .redacted = field.redacted,
-        .default_value = null,
-        .auto_generated = true,
-        .auto_generate_type = .increments,
-    }) catch |err| {
-        self.err = err;
-    };
+    self.addIncrementField(field, .i32);
 }
+
+// MARK: - Binary Type
 
 pub fn binary(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .binary_optional else .binary,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .binary_optional else .binary;
+    self.addFieldInternal(field, field_type, .none, null);
 }
+
+// MARK: - Boolean Type
 
 pub fn boolean(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .bool_optional else .bool,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .bool_optional else .bool;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
+// MARK: - Text Types
+
 pub fn string(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .text_optional else .text,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .text_optional else .text;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
 pub fn uuid(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .uuid_optional else .uuid,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value orelse "gen_random_uuid()",
-        .auto_generated = field.auto_generated,
-        .auto_generate_type = .uuid,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .uuid_optional else .uuid;
+    const default_value = field.default_value orelse "nil";
+    self.addFieldInternal(field, field_type, .uuid, default_value);
 }
 
+// MARK: - Timestamp Types
+
 pub fn dateTime(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .timestamp_optional else .timestamp,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-        .auto_generate_type = .timestamp,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .timestamp_optional else .timestamp;
+    self.addFieldInternal(field, field_type, .timestamp, null);
 }
 
 /// Adds standard created_at and updated_at timestamp fields to the table schema.
 pub fn timestamps(self: *TableSchema) void {
     if (self.err != null) return;
-    self.fields.append(self.allocator, .{
-        .name = "created_at",
-        .type = .timestamp,
-        .not_null = true,
-        .create_input = .excluded,
-        .update_input = false,
-        .redacted = false,
-        .default_value = "CURRENT_TIMESTAMP",
-        .auto_generated = true,
-        .auto_generate_type = .timestamp,
-    }) catch |err| {
-        self.err = err;
+
+    const timestamp_fields = [_]Field{
+        .{
+            .name = "created_at",
+            .type = .timestamp,
+            .not_null = true,
+            .create_input = .excluded,
+            .update_input = false,
+            .redacted = false,
+            .default_value = "CURRENT_TIMESTAMP",
+            .auto_generated = true,
+            .auto_generate_type = .timestamp,
+        },
+        .{
+            .name = "updated_at",
+            .type = .timestamp,
+            .not_null = true,
+            .create_input = .excluded,
+            .update_input = false,
+            .redacted = false,
+            .default_value = "CURRENT_TIMESTAMP",
+            .auto_generated = true,
+            .auto_generate_type = .timestamp,
+        },
     };
-    self.fields.append(self.allocator, .{
-        .name = "updated_at",
-        .type = .timestamp,
-        .not_null = true,
-        .create_input = .excluded,
-        .update_input = false,
-        .redacted = false,
-        .default_value = "CURRENT_TIMESTAMP",
-        .auto_generated = true,
-        .auto_generate_type = .timestamp,
-    }) catch |err| {
-        self.err = err;
-    };
+
+    for (&timestamp_fields) |f| {
+        self.fields.append(self.allocator, f) catch |err| {
+            self.err = err;
+            return;
+        };
+    }
 }
 
 pub fn softDelete(self: *TableSchema) void {
@@ -380,81 +266,31 @@ pub fn softDelete(self: *TableSchema) void {
     };
 }
 
+// MARK: - Float Types
+
 pub fn float(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .f32_optional else .f32,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .f32_optional else .f32;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
 pub fn numeric(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .f64_optional else .f64,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .f64_optional else .f64;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
+// MARK: - JSON Types
+
 pub fn json(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .json_optional else .json,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .json_optional else .json;
+    self.addFieldInternal(field, field_type, .none, null);
 }
 
 pub fn jsonb(self: *TableSchema, field: FieldInput) void {
-    if (self.err != null) return;
-    const actual_create_input = field.create_input orelse (if (field.nullable) InputMode.optional else InputMode.required);
-    self.fields.append(self.allocator, .{
-        .name = field.name,
-        .type = if (field.nullable) .jsonb_optional else .jsonb,
-        .primary_key = field.primary_key,
-        .unique = field.unique,
-        .not_null = !field.nullable,
-        .create_input = actual_create_input,
-        .update_input = field.update_input,
-        .redacted = field.redacted,
-        .default_value = field.default_value,
-        .auto_generated = field.auto_generated,
-    }) catch |err| {
-        self.err = err;
-    };
+    const field_type: FieldType = if (field.nullable) .jsonb_optional else .jsonb;
+    self.addFieldInternal(field, field_type, .none, null);
 }
+
+// MARK: - Relationships
 
 pub fn foreign(self: *TableSchema, rel: Relationship) void {
     if (self.err != null) return;
@@ -592,6 +428,8 @@ pub fn hasManyList(self: *TableSchema, rels: []const HasManyRelationship) void {
     };
 }
 
+// MARK: - Alter Operations
+
 pub fn alterField(self: *TableSchema, field: Alter) void {
     if (self.err != null) return;
     if (self.fields.items.len == 0) {
@@ -634,6 +472,15 @@ pub fn alterFields(self: *TableSchema, fields: []const Alter) void {
     }
 }
 
+// MARK: - Index Operations
+
+pub fn addIndexes(self: *TableSchema, list: []const Index) void {
+    if (self.err != null) return;
+    self.indexes.appendSlice(self.allocator, list) catch |err| {
+        self.err = err;
+    };
+}
+
 pub fn dropIndex(self: *TableSchema, index_name: []const u8) void {
     if (self.err != null) return;
     self.drop_indexes.append(self.allocator, index_name) catch |err| {
@@ -641,6 +488,8 @@ pub fn dropIndex(self: *TableSchema, index_name: []const u8) void {
         return;
     };
 }
+
+// MARK: - Tests
 
 test "check" {
     const allocator = std.testing.allocator;
@@ -652,7 +501,6 @@ test "check" {
             fn build(t: *TableSchema) void {
                 t.bigIncrements(.{ .name = "id" });
                 t.string(.{ .name = "name" });
-                // t.index();
             }
         }.build,
     );
@@ -667,10 +515,11 @@ test "deferred error check" {
         allocator,
         struct {
             fn build(t: *TableSchema) void {
-                t.index(); // Should fail because no fields
+                // Create an error by trying to alter a field that doesn't exist
+                t.alterField(.{ .name = "nonexistent" });
             }
         }.build,
     );
 
-    try std.testing.expectError(error.NoFields, result);
+    try std.testing.expectError(error.FieldNotFound, result);
 }

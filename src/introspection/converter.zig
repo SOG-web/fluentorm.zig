@@ -3,9 +3,9 @@
 
 const std = @import("std");
 
-const types = @import("types.zig");
-const schema = @import("../schema.zig");
+const schema_mod = @import("../schema.zig");
 const TableSchema = @import("../table.zig");
+const types = @import("types.zig");
 
 /// Options for schema conversion
 pub const ConversionOptions = struct {
@@ -83,7 +83,7 @@ pub fn convertTable(
 
     // Convert foreign keys to relationships
     for (table.foreign_keys.items) |fk| {
-        const rel = schema.Relationship{
+        const rel = schema_mod.Relationship{
             .name = fk.constraint_name,
             .column = fk.column_name,
             .references_table = fk.foreign_table_name,
@@ -126,7 +126,7 @@ fn convertColumn(
     col: *const types.IntrospectedColumn,
     table: *const types.IntrospectedTable,
     options: ConversionOptions,
-) !schema.Field {
+) !schema_mod.Field {
     _ = allocator;
 
     const is_pk = table.isPrimaryKeyColumn(col.name);
@@ -135,7 +135,7 @@ fn convertColumn(
     const is_auto_generated = auto_gen_type != .none;
 
     // Determine input mode
-    var create_input: schema.InputMode = .required;
+    var create_input: schema_mod.InputMode = .required;
     if (options.infer_input_modes) {
         if (is_auto_generated or is_pk) {
             create_input = .excluded;
@@ -158,7 +158,7 @@ fn convertColumn(
         }
     }
 
-    return schema.Field{
+    return schema_mod.Field{
         .name = col.name,
         .type = col.toFieldType(),
         .primary_key = is_pk,
@@ -339,7 +339,7 @@ fn generateFieldCode(
     try writer.writeAll("    });\n");
 }
 
-fn getFieldMethodName(col: *const types.IntrospectedColumn, auto_gen_type: schema.AutoGenerateType) []const u8 {
+fn getFieldMethodName(col: *const types.IntrospectedColumn, auto_gen_type: schema_mod.AutoGenerateType) []const u8 {
     // Handle auto-generated types
     if (auto_gen_type == .uuid) {
         return "uuidPrimaryKey";

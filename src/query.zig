@@ -24,24 +24,6 @@ pub const PredicateClause = struct {
     sql: []const u8,
 };
 
-const jc_exp = JoinClause{
-    .base_field = .{ .users = .id },
-    .join_type = .inner,
-    .join_table = .posts,
-    .join_field = .{ .posts = .user_id },
-    .join_operator = .eq,
-    .predicates = &.{
-        .{
-            .where_type = .@"and",
-            .sql = "posts.is_approved = true",
-        },
-        .{
-            .where_type = .@"or",
-            .sql = "posts.title LIKE '%zig%'",
-        },
-    },
-};
-
 pub const Operator = enum {
     eq,
     neq,
@@ -224,42 +206,67 @@ pub fn orWhere(self: anytype, clause: anytype) void {
     }) catch return;
 }
 
-pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) ![]const u8 {
-    const op_str = clause.operator.toSql();
+fn formatWhereClause(
+    allocator: std.mem.Allocator,
+    table: []const u8,
+    field: anytype,
+    operator: Operator,
+    value: ?WhereValue,
+) ![]const u8 {
+    const op_str = operator.toSql();
 
-    // Handle IS NULL / IS NOT NULL which don't have a value
-    if (clause.operator == .is_null or clause.operator == .is_not_null) {
+    if (operator == .is_null or operator == .is_not_null) {
         return try std.fmt.allocPrint(
-            self.arena.allocator(),
+            allocator,
             "{s}.{s} {s}",
-            .{ self.tablename(), @tagName(clause.field), op_str },
+            .{ table, @tagName(field), op_str },
         );
     }
 
-    // Handle standard operators
     if (value) |val| {
-        const str = switch (val) {
+        return switch (val) {
             .boolean => |b| try std.fmt.allocPrint(
-                self.arena.allocator(),
+                allocator,
                 "{s}.{s} {s} {}",
-                .{ self.tablename(), @tagName(clause.field), op_str, b },
+                .{ table, @tagName(field), op_str, b },
             ),
             .integer => |i| try std.fmt.allocPrint(
-                self.arena.allocator(),
+                allocator,
                 "{s}.{s} {s} {d}",
-                .{ self.tablename(), @tagName(clause.field), op_str, i },
+                .{ table, @tagName(field), op_str, i },
             ),
             .string => |s| try std.fmt.allocPrint(
-                self.arena.allocator(),
+                allocator,
                 "{s}.{s} {s} '{s}'",
-                .{ self.tablename(), @tagName(clause.field), op_str, s },
+                .{ table, @tagName(field), op_str, s },
             ),
         };
-
-        return str;
     }
 
     return "";
+}
+
+pub fn buildWhereClauseSql(self: anytype, clause: anytype, value: ?WhereValue) ![]const u8 {
+    return formatWhereClause(self.arena.allocator(), self.tablename(), clause.field, clause.operator, value);
+}
+
+fn appendWhereClauses(self: anytype, temp_allocator: std.mem.Allocator, buf: *std.ArrayList(u8), Model: type) !void {
+    var first_where = true;
+    const has_deleted_at = @hasField(Model, "deleted_at");
+    if (has_deleted_at and !self.include_deleted) {
+        try buf.appendSlice(temp_allocator, " WHERE deleted_at IS NULL");
+        first_where = false;
+    }
+
+    for (self.where_clauses.items) |clause| {
+        if (first_where) {
+            try buf.appendSlice(temp_allocator, " WHERE ");
+            first_where = false;
+        } else {
+            try buf.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()});
+        }
+        try buf.appendSlice(temp_allocator, clause.sql);
+    }
 }
 
 pub fn whereBetween(
@@ -495,42 +502,7 @@ pub fn include(self: anytype, rel: anytype) void {
 }
 
 pub fn buildIncludeWhere(self: anytype, clause: anytype, table: []const u8, value: ?WhereValue) ![]const u8 {
-    const op_str = clause.operator.toSql();
-
-    // Handle IS NULL / IS NOT NULL which don't have a value
-    if (clause.operator == .is_null or clause.operator == .is_not_null) {
-        return try std.fmt.allocPrint(
-            self.arena.allocator(),
-            "{s}.{s} {s}",
-            .{ table, @tagName(clause.field), op_str },
-        );
-    }
-
-    // Handle standard operators
-    if (value) |val| {
-        const str = switch (val) {
-            .boolean,
-            => |b| try std.fmt.allocPrint(
-                self.arena.allocator(),
-                "{s}.{s} {s} {}",
-                .{ table, @tagName(clause.field), op_str, b },
-            ),
-            .integer => |i| try std.fmt.allocPrint(
-                self.arena.allocator(),
-                "{s}.{s} {s} {d}",
-                .{ table, @tagName(clause.field), op_str, i },
-            ),
-            .string => |s| try std.fmt.allocPrint(
-                self.arena.allocator(),
-                "{s}.{s} {s} '{s}'",
-                .{ table, @tagName(clause.field), op_str, s },
-            ),
-        };
-
-        return str;
-    }
-
-    return "";
+    return formatWhereClause(self.arena.allocator(), table, clause.field, clause.operator, value);
 }
 
 pub fn groupBy(self: anytype, fields: anytype) void {
@@ -820,30 +792,9 @@ pub fn delete(self: anytype, db: Executor, args: anytype, Model: type) err.Resul
         return .{ .err = OrmError.fromError(e) };
     };
 
-    var first_where = true;
-    const has_deleted_at = @hasField(Model, "deleted_at");
-    if (has_deleted_at and !self.include_deleted) {
-        comp_sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-        first_where = false;
-    }
-
-    for (self.where_clauses.items) |clause| {
-        if (first_where) {
-            comp_sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-            first_where = false;
-        } else {
-            comp_sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-        }
-        comp_sql.appendSlice(temp_allocator, clause.sql) catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-    }
+    appendWhereClauses(self, temp_allocator, &comp_sql, Model) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     const result = db.execWithErr(comp_sql.items, args);
     return switch (result) {
@@ -866,30 +817,9 @@ pub fn count(self: anytype, db: Executor, args: anytype, Model: type) err.Result
         return .{ .err = OrmError.fromError(e) };
     };
 
-    var first_where = true;
-    const has_deleted_at = @hasField(Model, "deleted_at");
-    if (has_deleted_at and !self.include_deleted) {
-        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-        first_where = false;
-    }
-
-    for (self.where_clauses.items) |clause| {
-        if (first_where) {
-            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-            first_where = false;
-        } else {
-            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-        }
-        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-    }
+    appendWhereClauses(self, temp_allocator, &sql, Model) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     const row_result = db.rowWithErr(sql.items, args);
     switch (row_result) {
@@ -922,30 +852,9 @@ pub fn pluck(self: anytype, db: Executor, allocator: std.mem.Allocator, field: a
         return .{ .err = OrmError.fromError(e) };
     };
 
-    var first_where = true;
-    const has_deleted_at = @hasField(Model, "deleted_at");
-    if (has_deleted_at and !self.include_deleted) {
-        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-        first_where = false;
-    }
-
-    for (self.where_clauses.items) |clause| {
-        if (first_where) {
-            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-            first_where = false;
-        } else {
-            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-        }
-        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-    }
+    appendWhereClauses(self, temp_allocator, &sql, Model) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     if (self.limit_val) |l| {
         var buf: [32]u8 = undefined;
@@ -1019,30 +928,9 @@ pub fn aggregate(self: anytype, db: Executor, agg: AggregateType, field: anytype
         return .{ .err = OrmError.fromError(e) };
     };
 
-    var first_where = true;
-    const has_deleted_at = @hasField(Model, "deleted_at");
-    if (has_deleted_at and !self.include_deleted) {
-        sql.appendSlice(temp_allocator, " WHERE deleted_at IS NULL") catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-        first_where = false;
-    }
-
-    for (self.where_clauses.items) |clause| {
-        if (first_where) {
-            sql.appendSlice(temp_allocator, " WHERE ") catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-            first_where = false;
-        } else {
-            sql.writer(temp_allocator).print(" {s} ", .{clause.clause_type.toSql()}) catch |e| {
-                return .{ .err = OrmError.fromError(e) };
-            };
-        }
-        sql.appendSlice(temp_allocator, clause.sql) catch |e| {
-            return .{ .err = OrmError.fromError(e) };
-        };
-    }
+    appendWhereClauses(self, temp_allocator, &sql, Model) catch |e| {
+        return .{ .err = OrmError.fromError(e) };
+    };
 
     const row_result = db.rowWithErr(sql.items, args);
     switch (row_result) {

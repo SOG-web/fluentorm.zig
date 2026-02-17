@@ -7,6 +7,7 @@ const FieldChange = diff_mod.FieldChange;
 const IndexChange = diff_mod.IndexChange;
 const RelationshipChange = diff_mod.RelationshipChange;
 const ChangeType = diff_mod.ChangeType;
+const types = @import("types.zig");
 const schema = @import("schema.zig");
 const snapshot_mod = @import("snapshot.zig");
 const FieldSnapshot = snapshot_mod.FieldSnapshot;
@@ -14,68 +15,11 @@ const IndexSnapshot = snapshot_mod.IndexSnapshot;
 const RelationshipSnapshot = snapshot_mod.RelationshipSnapshot;
 const TableSnapshot = snapshot_mod.TableSnapshot;
 
-fn fieldTypeToPgType(type_str: []const u8) []const u8 {
-    // Match the actual FieldType enum tag names from schema.zig
-    if (std.mem.eql(u8, type_str, "uuid")) return "UUID";
-    if (std.mem.eql(u8, type_str, "uuid_optional")) return "UUID";
-    if (std.mem.eql(u8, type_str, "text")) return "TEXT";
-    if (std.mem.eql(u8, type_str, "text_optional")) return "TEXT";
-    if (std.mem.eql(u8, type_str, "bool")) return "BOOLEAN";
-    if (std.mem.eql(u8, type_str, "bool_optional")) return "BOOLEAN";
-    if (std.mem.eql(u8, type_str, "i16")) return "SMALLINT";
-    if (std.mem.eql(u8, type_str, "i16_optional")) return "SMALLINT";
-    if (std.mem.eql(u8, type_str, "i32")) return "INT";
-    if (std.mem.eql(u8, type_str, "i32_optional")) return "INT";
-    if (std.mem.eql(u8, type_str, "i64")) return "BIGINT";
-    if (std.mem.eql(u8, type_str, "i64_optional")) return "BIGINT";
-    if (std.mem.eql(u8, type_str, "f32")) return "float4";
-    if (std.mem.eql(u8, type_str, "f32_optional")) return "float4";
-    if (std.mem.eql(u8, type_str, "f64")) return "numeric";
-    if (std.mem.eql(u8, type_str, "f64_optional")) return "numeric";
-    if (std.mem.eql(u8, type_str, "timestamp")) return "TIMESTAMP";
-    if (std.mem.eql(u8, type_str, "timestamp_optional")) return "TIMESTAMP";
-    if (std.mem.eql(u8, type_str, "json")) return "JSON";
-    if (std.mem.eql(u8, type_str, "json_optional")) return "JSON";
-    if (std.mem.eql(u8, type_str, "jsonb")) return "JSONB";
-    if (std.mem.eql(u8, type_str, "jsonb_optional")) return "JSONB";
-    if (std.mem.eql(u8, type_str, "binary")) return "bytea";
-    if (std.mem.eql(u8, type_str, "binary_optional")) return "bytea";
-    return "TEXT"; // fallback
-}
-
-fn fieldTypeToEnum(type_str: []const u8) schema.FieldType {
-    if (std.mem.eql(u8, type_str, "uuid")) return schema.FieldType.uuid;
-    if (std.mem.eql(u8, type_str, "uuid_optional")) return schema.FieldType.uuid_optional;
-    if (std.mem.eql(u8, type_str, "text")) return schema.FieldType.text;
-    if (std.mem.eql(u8, type_str, "text_optional")) return schema.FieldType.text_optional;
-    if (std.mem.eql(u8, type_str, "bool")) return schema.FieldType.bool;
-    if (std.mem.eql(u8, type_str, "bool_optional")) return schema.FieldType.bool_optional;
-    if (std.mem.eql(u8, type_str, "i16")) return schema.FieldType.i16;
-    if (std.mem.eql(u8, type_str, "i16_optional")) return schema.FieldType.i16_optional;
-    if (std.mem.eql(u8, type_str, "i32")) return schema.FieldType.i32;
-    if (std.mem.eql(u8, type_str, "i32_optional")) return schema.FieldType.i32_optional;
-    if (std.mem.eql(u8, type_str, "i64")) return schema.FieldType.i64;
-    if (std.mem.eql(u8, type_str, "i64_optional")) return schema.FieldType.i64_optional;
-    if (std.mem.eql(u8, type_str, "f32")) return schema.FieldType.f32;
-    if (std.mem.eql(u8, type_str, "f32_optional")) return schema.FieldType.f32_optional;
-    if (std.mem.eql(u8, type_str, "f64")) return schema.FieldType.f64;
-    if (std.mem.eql(u8, type_str, "f64_optional")) return schema.FieldType.f64_optional;
-    if (std.mem.eql(u8, type_str, "timestamp")) return schema.FieldType.timestamp;
-    if (std.mem.eql(u8, type_str, "timestamp_optional")) return schema.FieldType.timestamp_optional;
-    if (std.mem.eql(u8, type_str, "json")) return schema.FieldType.json;
-    if (std.mem.eql(u8, type_str, "json_optional")) return schema.FieldType.json_optional;
-    if (std.mem.eql(u8, type_str, "jsonb")) return schema.FieldType.jsonb;
-    if (std.mem.eql(u8, type_str, "jsonb_optional")) return schema.FieldType.jsonb_optional;
-    if (std.mem.eql(u8, type_str, "binary")) return schema.FieldType.binary;
-    if (std.mem.eql(u8, type_str, "binary_optional")) return schema.FieldType.binary_optional;
-    return schema.FieldType.text; // fallback
-}
-
 fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8), field: FieldSnapshot) !void {
     try sql.appendSlice(allocator, "  ");
     try sql.appendSlice(allocator, field.name);
     try sql.appendSlice(allocator, " ");
-    try sql.appendSlice(allocator, fieldTypeToPgType(field.type));
+    try sql.appendSlice(allocator, types.fieldTypeFromString(field.type).toPgType());
 
     if (field.primary_key) {
         try sql.appendSlice(allocator, " PRIMARY KEY");
@@ -104,8 +48,8 @@ fn generateFieldSnapshotSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
             return;
         }
         try sql.appendSlice(allocator, " DEFAULT ");
-        const default_type = fieldTypeToEnum(field.type);
-        if (default_type.shouldQuoteDefault(default)) {
+        const field_type = types.fieldTypeFromString(field.type);
+        if (field_type.shouldQuoteDefault(default)) {
             try sql.appendSlice(allocator, "'");
             try sql.appendSlice(allocator, default);
             try sql.appendSlice(allocator, "'");
@@ -125,14 +69,14 @@ fn generateFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8),
                 try sql.appendSlice(allocator, " ADD COLUMN ");
                 try sql.appendSlice(allocator, field.name);
                 try sql.appendSlice(allocator, " ");
-                try sql.appendSlice(allocator, fieldTypeToPgType(field.type));
+                try sql.appendSlice(allocator, types.fieldTypeFromString(field.type).toPgType());
 
                 if (field.not_null) {
                     // For NOT NULL columns, we need a default or to allow null initially
                     if (field.default_value) |default| {
                         try sql.appendSlice(allocator, " NOT NULL DEFAULT ");
-                        const default_type = fieldTypeToEnum(field.type);
-                        if (default_type.shouldQuoteDefault(default)) {
+                        const field_type = types.fieldTypeFromString(field.type);
+                        if (field_type.shouldQuoteDefault(default)) {
                             try sql.appendSlice(allocator, "'");
                             try sql.appendSlice(allocator, default);
                             try sql.appendSlice(allocator, "'");
@@ -178,7 +122,7 @@ fn generateFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8),
                     try sql.appendSlice(allocator, " ALTER COLUMN ");
                     try sql.appendSlice(allocator, new_field.name);
                     try sql.appendSlice(allocator, " TYPE ");
-                    try sql.appendSlice(allocator, fieldTypeToPgType(new_field.type));
+                    try sql.appendSlice(allocator, types.fieldTypeFromString(new_field.type).toPgType());
                     try sql.appendSlice(allocator, ";\n");
                 }
 
@@ -238,8 +182,8 @@ fn generateFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8),
                     try sql.appendSlice(allocator, new_field.name);
                     if (new_default) |nd| {
                         try sql.appendSlice(allocator, " SET DEFAULT ");
-                        const default_type = fieldTypeToEnum(new_field.type);
-                        if (default_type.shouldQuoteDefault(nd)) {
+                        const field_type = types.fieldTypeFromString(new_field.type);
+                        if (field_type.shouldQuoteDefault(nd)) {
                             try sql.appendSlice(allocator, "'");
                             try sql.appendSlice(allocator, nd);
                             try sql.appendSlice(allocator, "'");
@@ -312,6 +256,9 @@ fn generateAddForeignKeySQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
         return;
     }
 
+    const on_delete = types.ReferentialAction.fromSql(rel.on_delete);
+    const on_update = types.ReferentialAction.fromSql(rel.on_update);
+
     try sql.appendSlice(allocator, "ALTER TABLE ");
     try sql.appendSlice(allocator, table_name);
     try sql.appendSlice(allocator, " ADD CONSTRAINT fk_");
@@ -325,19 +272,10 @@ fn generateAddForeignKeySQL(allocator: std.mem.Allocator, sql: *std.ArrayList(u8
     try sql.appendSlice(allocator, "(");
     try sql.appendSlice(allocator, rel.references_column);
     try sql.appendSlice(allocator, ")\n  ON DELETE ");
-    try sql.appendSlice(allocator, onActionToSQL(rel.on_delete));
+    try sql.appendSlice(allocator, on_delete.toSql());
     try sql.appendSlice(allocator, " ON UPDATE ");
-    try sql.appendSlice(allocator, onActionToSQL(rel.on_update));
+    try sql.appendSlice(allocator, on_update.toSql());
     try sql.appendSlice(allocator, ";\n");
-}
-
-/// Convert on_delete/on_update string to SQL
-fn onActionToSQL(action: []const u8) []const u8 {
-    if (std.mem.eql(u8, action, "cascade")) return "CASCADE";
-    if (std.mem.eql(u8, action, "set_null")) return "SET NULL";
-    if (std.mem.eql(u8, action, "set_default")) return "SET DEFAULT";
-    if (std.mem.eql(u8, action, "restrict")) return "RESTRICT";
-    return "NO ACTION";
 }
 
 /// Generate relationship change SQL
@@ -392,7 +330,7 @@ fn generateRollbackFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayL
                 try sql.appendSlice(allocator, " ADD COLUMN ");
                 try sql.appendSlice(allocator, field.name);
                 try sql.appendSlice(allocator, " ");
-                try sql.appendSlice(allocator, fieldTypeToPgType(field.type));
+                try sql.appendSlice(allocator, types.fieldTypeFromString(field.type).toPgType());
                 try sql.appendSlice(allocator, ";\n");
             }
         },
@@ -407,7 +345,7 @@ fn generateRollbackFieldChangeSQL(allocator: std.mem.Allocator, sql: *std.ArrayL
                     try sql.appendSlice(allocator, " ALTER COLUMN ");
                     try sql.appendSlice(allocator, old_field.name);
                     try sql.appendSlice(allocator, " TYPE ");
-                    try sql.appendSlice(allocator, fieldTypeToPgType(old_field.type));
+                    try sql.appendSlice(allocator, types.fieldTypeFromString(old_field.type).toPgType());
                     try sql.appendSlice(allocator, ";\n");
                 }
             }

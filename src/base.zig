@@ -37,6 +37,22 @@ pub fn BaseModel(comptime T: type) type {
     const CountResult = err.Result(i64);
 
     return struct {
+        /// Unwrap a Result(T) into !T for easier error handling
+        fn unwrap(comptime ResultType: type, result: ResultType) !ResultType.ok.type {
+            return switch (result) {
+                .ok => |v| v,
+                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            };
+        }
+
+        /// Unwrap a void Result into !void
+        fn unwrapVoid(result: VoidResult) !void {
+            return switch (result) {
+                .ok => {},
+                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
+            };
+        }
+
         /// Truncates the table (removes all data but keeps structure)
         /// Returns OrmError on failure for detailed error info
         pub fn truncate(db: Executor) VoidResult {
@@ -57,15 +73,6 @@ pub fn BaseModel(comptime T: type) type {
             return switch (result) {
                 .ok => .{ .ok = {} },
                 .err => |e| .{ .err = e },
-            };
-        }
-
-        /// Truncate implementation that can return Zig errors
-        pub fn truncateOrError(db: Executor) !void {
-            const result = truncate(db);
-            return switch (result) {
-                .ok => {},
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
 
@@ -135,18 +142,6 @@ pub fn BaseModel(comptime T: type) type {
             }
         }
 
-        /// Find by ID implementation that can return Zig errors
-        pub fn findByIdOrError(db: Executor, allocator: std.mem.Allocator, id: []const u8) !?T {
-            const result = findById(db, allocator, id);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| {
-                    if (e.code == .NoRowsReturned) return null;
-                    if (e.err) |underlying| return underlying else return error.OrmError;
-                },
-            };
-        }
-
         /// Find all records (optionally filtered by deleted_at)
         /// Returns OrmError on failure for detailed error info
         pub fn findAll(db: Executor, allocator: std.mem.Allocator, include_deleted: bool) ModelListResult {
@@ -200,15 +195,6 @@ pub fn BaseModel(comptime T: type) type {
             }
         }
 
-        /// Find all implementation that can return Zig errors
-        pub fn findAllOrError(db: Executor, allocator: std.mem.Allocator, include_deleted: bool) ![]T {
-            const result = findAll(db, allocator, include_deleted);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Insert a new record using CreateInput type
         /// Returns Result with either the ID or detailed OrmError
         pub fn insert(db: Executor, allocator: std.mem.Allocator, data: anytype) InsertResult {
@@ -237,15 +223,6 @@ pub fn BaseModel(comptime T: type) type {
                     } };
                 },
             }
-        }
-
-        /// Insert implementation that can return Zig errors (for use with try)
-        pub fn insertOrError(db: Executor, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
-            const result = insert(db, allocator, data);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
         }
 
         /// Insert multiple new records in a single query
@@ -373,19 +350,6 @@ pub fn BaseModel(comptime T: type) type {
             } };
         }
 
-        /// InsertMany implementation that can return Zig errors
-        pub fn insertManyOrError(
-            db: Executor,
-            allocator: std.mem.Allocator,
-            data_list: []const T.CreateInput,
-        ) ![]const []const u8 {
-            const result = insertMany(db, allocator, data_list);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Insert a new record and return the full model
         /// Returns Result with either the model or detailed OrmError
         pub fn insertAndReturn(db: Executor, allocator: std.mem.Allocator, data: anytype) ModelResult {
@@ -435,15 +399,6 @@ pub fn BaseModel(comptime T: type) type {
             }
         }
 
-        /// InsertAndReturn implementation that can return Zig errors
-        pub fn insertAndReturnOrError(db: Executor, allocator: std.mem.Allocator, data: anytype) !T {
-            const result = insertAndReturn(db, allocator, data);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Update an existing record
         /// Returns OrmError on failure for detailed error info
         pub fn update(db: Executor, id: []const u8, data: anytype) VoidResult {
@@ -464,15 +419,6 @@ pub fn BaseModel(comptime T: type) type {
             return switch (result) {
                 .ok => .{ .ok = {} },
                 .err => |e| .{ .err = e },
-            };
-        }
-
-        /// Update implementation that can return Zig errors
-        pub fn updateOrError(db: Executor, id: []const u8, data: anytype) !void {
-            const result = update(db, id, data);
-            return switch (result) {
-                .ok => {},
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
 
@@ -525,15 +471,6 @@ pub fn BaseModel(comptime T: type) type {
             }
         }
 
-        /// UpdateAndReturn implementation that can return Zig errors
-        pub fn updateAndReturnOrError(db: Executor, allocator: std.mem.Allocator, id: []const u8, data: anytype) !T {
-            const result = updateAndReturn(db, allocator, id, data);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Upsert (insert or update) a record
         /// Returns Result with either the ID or detailed OrmError
         pub fn upsert(db: Executor, allocator: std.mem.Allocator, data: anytype) InsertResult {
@@ -562,15 +499,6 @@ pub fn BaseModel(comptime T: type) type {
                     } };
                 },
             }
-        }
-
-        /// Upsert implementation that can return Zig errors
-        pub fn upsertOrError(db: Executor, allocator: std.mem.Allocator, data: anytype) ![]const u8 {
-            const result = upsert(db, allocator, data);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
         }
 
         /// Upsert (insert or update) a record and return the full model
@@ -622,15 +550,6 @@ pub fn BaseModel(comptime T: type) type {
             }
         }
 
-        /// UpsertAndReturn implementation that can return Zig errors
-        pub fn upsertAndReturnOrError(db: Executor, allocator: std.mem.Allocator, data: anytype) !T {
-            const result = upsertAndReturn(db, allocator, data);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Soft delete a record (sets deleted_at timestamp)
         /// Returns OrmError on failure for detailed error info
         pub fn softDelete(db: Executor, id: []const u8) VoidResult {
@@ -657,15 +576,6 @@ pub fn BaseModel(comptime T: type) type {
             };
         }
 
-        /// SoftDelete implementation that can return Zig errors
-        pub fn softDeleteOrError(db: Executor, id: []const u8) !void {
-            const result = softDelete(db, id);
-            return switch (result) {
-                .ok => {},
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
-        }
-
         /// Hard delete a record (permanently removes from database)
         /// Returns OrmError on failure for detailed error info
         pub fn hardDelete(db: Executor, id: []const u8) VoidResult {
@@ -686,15 +596,6 @@ pub fn BaseModel(comptime T: type) type {
             return switch (result) {
                 .ok => .{ .ok = {} },
                 .err => |e| .{ .err = e },
-            };
-        }
-
-        /// HardDelete implementation that can return Zig errors
-        pub fn hardDeleteOrError(db: Executor, id: []const u8) !void {
-            const result = hardDelete(db, id);
-            return switch (result) {
-                .ok => {},
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
             };
         }
 
@@ -729,15 +630,6 @@ pub fn BaseModel(comptime T: type) type {
                     return .{ .ok = row.get(i64, 0) };
                 },
             }
-        }
-
-        /// Count implementation that can return Zig errors
-        pub fn countOrError(db: Executor, include_deleted: bool) !i64 {
-            const result = count(db, include_deleted);
-            return switch (result) {
-                .ok => |v| v,
-                .err => |e| if (e.err) |underlying| underlying else error.OrmError,
-            };
         }
 
         /// From row

@@ -1,7 +1,8 @@
 const std = @import("std");
 
-const HasManyRelationship = @import("../schema.zig").HasManyRelationship;
-const Relationship = @import("../schema.zig").Relationship;
+const schema_mod = @import("../schema.zig");
+const HasManyRelationship = schema_mod.HasManyRelationship;
+const Relationship = schema_mod.Relationship;
 const TableSchema = @import("../table.zig").TableSchema;
 const utils = @import("utils.zig");
 

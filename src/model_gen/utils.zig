@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const Relationship = @import("../schema.zig").Relationship;
-const FieldType = @import("../schema.zig").FieldType;
-const Field = @import("../schema.zig").Field;
+const schema_mod = @import("../schema.zig");
+const Relationship = schema_mod.Relationship;
+const FieldType = schema_mod.FieldType;
+const Field = schema_mod.Field;
 const TableSchema = @import("../table.zig").TableSchema;
 
 pub fn singularize(table_name: []const u8) []const u8 {

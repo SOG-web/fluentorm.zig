@@ -2,6 +2,7 @@
 // Represents the structure of database objects extracted from PostgreSQL system catalogs
 
 const std = @import("std");
+const types = @import("../types.zig");
 const schema = @import("../schema.zig");
 
 /// Represents a database column extracted from introspection
@@ -19,40 +20,17 @@ pub const IntrospectedColumn = struct {
     ordinal_position: i32,
 
     /// Convert PostgreSQL type to ORM FieldType
-    pub fn toFieldType(self: IntrospectedColumn) schema.FieldType {
-        const base_type = mapPgTypeToFieldType(self.udt_name, self.data_type);
+    pub fn toFieldType(self: IntrospectedColumn) types.FieldType {
+        const base_type = types.mapPgTypeToFieldType(self.udt_name, self.data_type);
         if (self.is_nullable) {
-            return toOptional(base_type);
+            return base_type.toOptional();
         }
         return base_type;
     }
 
     /// Determine auto-generation type based on column properties
-    pub fn getAutoGenerateType(self: IntrospectedColumn) schema.AutoGenerateType {
-        // Check for serial/identity columns
-        if (self.is_identity) {
-            return .increments;
-        }
-
-        // Check default value patterns
-        if (self.column_default) |default| {
-            if (std.mem.indexOf(u8, default, "nextval(") != null) {
-                return .increments;
-            }
-            if (std.mem.indexOf(u8, default, "uuid_generate") != null or
-                std.mem.indexOf(u8, default, "gen_random_uuid") != null)
-            {
-                return .uuid;
-            }
-            if (std.mem.eql(u8, default, "CURRENT_TIMESTAMP") or
-                std.mem.eql(u8, default, "now()") or
-                std.mem.indexOf(u8, default, "CURRENT_TIMESTAMP") != null)
-            {
-                return .timestamp;
-            }
-        }
-
-        return .none;
+    pub fn getAutoGenerateType(self: IntrospectedColumn) types.AutoGenerateType {
+        return types.determineAutoGenerateType(self.column_default, self.is_identity, self.identity_generation);
     }
 };
 
@@ -80,12 +58,12 @@ pub const IntrospectedForeignKey = struct {
     on_delete: []const u8,
     on_update: []const u8,
 
-    pub fn toOnDeleteAction(self: IntrospectedForeignKey) schema.OnDeleteAction {
-        return mapActionString(self.on_delete);
+    pub fn toOnDeleteAction(self: IntrospectedForeignKey) types.ReferentialAction {
+        return types.ReferentialAction.fromSql(self.on_delete);
     }
 
-    pub fn toOnUpdateAction(self: IntrospectedForeignKey) schema.OnUpdateAction {
-        return mapActionStringUpdate(self.on_update);
+    pub fn toOnUpdateAction(self: IntrospectedForeignKey) types.ReferentialAction {
+        return types.ReferentialAction.fromSql(self.on_update);
     }
 
     pub fn deinit(self: *IntrospectedForeignKey, allocator: std.mem.Allocator) void {
@@ -252,62 +230,3 @@ pub const IntrospectedDatabase = struct {
         return null;
     }
 };
-
-// Helper functions for type mapping
-
-fn mapPgTypeToFieldType(udt_name: []const u8, data_type: []const u8) schema.FieldType {
-    // Map PostgreSQL types to ORM FieldTypes
-    if (std.mem.eql(u8, udt_name, "uuid")) return .uuid;
-    if (std.mem.eql(u8, udt_name, "text")) return .text;
-    if (std.mem.eql(u8, udt_name, "varchar") or std.mem.eql(u8, data_type, "character varying")) return .text;
-    if (std.mem.eql(u8, udt_name, "char") or std.mem.eql(u8, data_type, "character")) return .text;
-    if (std.mem.eql(u8, udt_name, "bool") or std.mem.eql(u8, udt_name, "boolean")) return .bool;
-    if (std.mem.eql(u8, udt_name, "int2") or std.mem.eql(u8, udt_name, "smallint")) return .i16;
-    if (std.mem.eql(u8, udt_name, "int4") or std.mem.eql(u8, udt_name, "integer") or std.mem.eql(u8, udt_name, "serial")) return .i32;
-    if (std.mem.eql(u8, udt_name, "int8") or std.mem.eql(u8, udt_name, "bigint") or std.mem.eql(u8, udt_name, "bigserial")) return .i64;
-    if (std.mem.eql(u8, udt_name, "float4") or std.mem.eql(u8, udt_name, "real")) return .f32;
-    if (std.mem.eql(u8, udt_name, "float8") or std.mem.eql(u8, udt_name, "double precision")) return .f64;
-    if (std.mem.eql(u8, udt_name, "numeric") or std.mem.eql(u8, udt_name, "decimal")) return .f64;
-    if (std.mem.eql(u8, udt_name, "timestamp") or std.mem.eql(u8, udt_name, "timestamptz") or
-        std.mem.indexOf(u8, data_type, "timestamp") != null) return .timestamp;
-    if (std.mem.eql(u8, udt_name, "json")) return .json;
-    if (std.mem.eql(u8, udt_name, "jsonb")) return .jsonb;
-    if (std.mem.eql(u8, udt_name, "bytea")) return .binary;
-
-    // Default to text for unknown types
-    return .text;
-}
-
-fn toOptional(field_type: schema.FieldType) schema.FieldType {
-    return switch (field_type) {
-        .uuid => .uuid_optional,
-        .text => .text_optional,
-        .bool => .bool_optional,
-        .i16 => .i16_optional,
-        .i32 => .i32_optional,
-        .i64 => .i64_optional,
-        .f32 => .f32_optional,
-        .f64 => .f64_optional,
-        .timestamp => .timestamp_optional,
-        .json => .json_optional,
-        .jsonb => .jsonb_optional,
-        .binary => .binary_optional,
-        else => field_type, // Already optional
-    };
-}
-
-fn mapActionString(action: []const u8) schema.OnDeleteAction {
-    if (std.mem.eql(u8, action, "CASCADE") or std.mem.eql(u8, action, "c")) return .cascade;
-    if (std.mem.eql(u8, action, "SET NULL") or std.mem.eql(u8, action, "n")) return .set_null;
-    if (std.mem.eql(u8, action, "SET DEFAULT") or std.mem.eql(u8, action, "d")) return .set_default;
-    if (std.mem.eql(u8, action, "RESTRICT") or std.mem.eql(u8, action, "r")) return .restrict;
-    return .no_action;
-}
-
-fn mapActionStringUpdate(action: []const u8) schema.OnUpdateAction {
-    if (std.mem.eql(u8, action, "CASCADE") or std.mem.eql(u8, action, "c")) return .cascade;
-    if (std.mem.eql(u8, action, "SET NULL") or std.mem.eql(u8, action, "n")) return .set_null;
-    if (std.mem.eql(u8, action, "SET DEFAULT") or std.mem.eql(u8, action, "d")) return .set_default;
-    if (std.mem.eql(u8, action, "RESTRICT") or std.mem.eql(u8, action, "r")) return .restrict;
-    return .no_action;
-}

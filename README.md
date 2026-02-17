@@ -381,3 +381,8 @@ MIT
 ## Acknowledgments
 
 - Built with [pg.zig](https://github.com/karlseguin/pg.zig) for PostgreSQL connectivity
+
+
+study this repo
+
+i need you to cleanup the codebase it full of redundant code and it needs cleanup, re-arragement
